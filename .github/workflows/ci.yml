@@ -1,0 +1,96 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Lint and format checks
+        run: tools/lint.sh
+
+  build-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Native unit tests
+        run: |
+          cmake --preset host
+          cmake --build --preset host
+          ctest --preset host
+
+      - name: Python and SBL/gwsync tests
+        run: uv run pytest -q
+
+  esp32:
+    runs-on: ubuntu-24.04
+    container: espressif/idf:v5.5.6
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build the firmware
+        shell: bash
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git describe --always --dirty --tags
+          grep -qx 'ESP_IDF_VERSION=v5.5.6' tools/toolchain.lock
+          . "$IDF_PATH/export.sh"
+          cd idf && idf.py set-target esp32s3 && idf.py build
+          idf.py -B build-esp32 -D SDKCONFIG=build-esp32/sdkconfig -D IDF_TARGET=esp32 build
+          (cd build && esptool.py --chip esp32s3 merge_bin -o ows_relay_full.bin @flash_args)
+          (cd build-esp32 && esptool.py --chip esp32 merge_bin -o ows_relay_full.bin @flash_args)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: esp32-relay
+          path: |
+            idf/build/ows_relay.bin
+            idf/build/ows_relay_full.bin
+            idf/build/bootloader/bootloader.bin
+            idf/build/partition_table/partition-table.bin
+            idf/build/ota_data_initial.bin
+            idf/build/flash_args
+            idf/build-esp32/ows_relay.bin
+            idf/build-esp32/ows_relay_full.bin
+            idf/build-esp32/bootloader/bootloader.bin
+            idf/build-esp32/partition_table/partition-table.bin
+            idf/build-esp32/ota_data_initial.bin
+            idf/build-esp32/flash_args
+
+  esp8266:
+    runs-on: ubuntu-24.04
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Cache PlatformIO's packages
+        uses: actions/cache@v4
+        with:
+          path: .toolchain/platformio
+          key: platformio-${{ hashFiles('esp8266/platformio.ini', 'tools/pio.sh') }}
+
+      - name: Build the firmware
+        run: tools/pio.sh run
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: esp8266-relay
+          path: esp8266/.pio/build/d1_mini/firmware.bin

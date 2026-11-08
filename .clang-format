@@ -1,0 +1,29 @@
+# C style for firmware/ (issue #52; checked by tools/lint.sh): K&R/Linux braces (a function's on its own line, a
+# block's at the end of the line), always braces, 4 spaces, 120 columns.
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 120
+BreakBeforeBraces: Linux
+InsertBraces: true
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: None
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortEnumsOnASingleLine: true
+PointerAlignment: Right
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+AlignConsecutiveMacros: Consecutive
+AlignEscapedNewlines: Left
+SortIncludes: Never
+ReflowComments: false
+SpaceBeforeParens: ControlStatements
+IndentCaseLabels: true
+Cpp11BracedListStyle: true
+BinPackArguments: true
+BinPackParameters: true
+AlignAfterOpenBracket: Align
+MaxEmptyLinesToKeep: 2
+SpacesBeforeTrailingComments: 2

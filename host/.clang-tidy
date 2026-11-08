@@ -1,0 +1,5 @@
+# Host program and tests: binary payloads copied with memcpy (not strings). The relay's own rules (../../.clang-tidy)
+# apply otherwise.
+InheritParentConfig: true
+Checks: >
+  -bugprone-not-null-terminated-result

@@ -1,0 +1,17 @@
+__pycache__/
+.venv/
+.pytest_cache/
+*.egg-info/
+/.toolchain
+build/
+.local/
+idf/build*/
+idf/sdkconfig.old
+idf/managed_components/
+esp8266/.pio/
+esp8266/include/generated_*.h
+
+# local stock-firmware backups of Wyze devices and session data: never committed
+/backups/
+/firmware/gateway-stock*.bin
+/firmware/*FLASH*.bin

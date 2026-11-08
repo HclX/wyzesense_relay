@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 480" width="900" height="480" role="img" aria-label="Wiring a Wyze v1 contact to an Classic ESP32 (LOLIN32) relay">
+<title>Wiring a Wyze v1 contact to an Classic ESP32 (LOLIN32) relay</title>
+<rect width="900" height="480" rx="14" fill="#ffffff"/>
+<rect x="40" y="70" width="405" height="282" rx="10" fill="#2d333b"/>
+<circle cx="190" cy="176" r="69" fill="none" stroke="#c9a227" stroke-width="10" opacity="0.55"/>
+<rect x="115" y="354" width="216" height="12" rx="6" fill="#b6e3e0" opacity="0.8"/>
+<text x="223" y="380" text-anchor="middle" font-size="11" fill="#8c959f" font-family="Helvetica, Arial, sans-serif">reed switch (glass, under the board)</text>
+<text x="242" y="58" text-anchor="middle" font-size="14" font-weight="bold" fill="#1f2328" font-family="Helvetica, Arial, sans-serif">Wyze v1 contact, pad side</text>
+<text x="435" y="92" text-anchor="end" font-size="11" fill="#adbac7" font-family="Helvetica, Arial, sans-serif">antenna side →</text>
+<circle cx="108" cy="136" r="11" fill="#d4b483" stroke="#1e88e5" stroke-width="4"/>
+<text x="108" y="119" text-anchor="middle" font-size="13" font-weight="bold" fill="#ffffff" font-family="Helvetica, Arial, sans-serif">W</text>
+<circle cx="176" cy="112" r="11" fill="#d4b483" stroke="#8e1b1b" stroke-width="4"/>
+<text x="176" y="95" text-anchor="middle" font-size="13" font-weight="bold" fill="#ffffff" font-family="Helvetica, Arial, sans-serif">V− (GND)</text>
+<circle cx="91" cy="254" r="11" fill="#d4b483" stroke="#2e9e3e" stroke-width="4"/>
+<text x="91" y="237" text-anchor="middle" font-size="13" font-weight="bold" fill="#ffffff" font-family="Helvetica, Arial, sans-serif">S</text>
+<circle cx="137" cy="288" r="11" fill="#d4b483" stroke="#57606a" stroke-width="2"/>
+<text x="137" y="270" text-anchor="middle" font-size="13" font-weight="bold" fill="#768390" font-family="Helvetica, Arial, sans-serif">C</text>
+<circle cx="209" cy="290" r="11" fill="#d4b483" stroke="#57606a" stroke-width="2"/>
+<text x="209" y="273" text-anchor="middle" font-size="13" font-weight="bold" fill="#768390" font-family="Helvetica, Arial, sans-serif">M</text>
+<circle cx="302" cy="270" r="11" fill="#d4b483" stroke="#f48fb1" stroke-width="4"/>
+<text x="302" y="252" text-anchor="middle" font-size="13" font-weight="bold" fill="#ffffff" font-family="Helvetica, Arial, sans-serif">V+ (3.3 V)</text>
+<circle cx="375" cy="295" r="11" fill="#d4b483" stroke="#5c7fa8" stroke-width="4"/>
+<text x="375" y="278" text-anchor="middle" font-size="13" font-weight="bold" fill="#ffffff" font-family="Helvetica, Arial, sans-serif">R</text>
+<circle cx="356" cy="325" r="11" fill="#d4b483" stroke="#9ccc28" stroke-width="4"/>
+<text x="356" y="308" text-anchor="middle" font-size="13" font-weight="bold" fill="#ffffff" font-family="Helvetica, Arial, sans-serif">T</text>
+<rect x="640" y="30" width="220" height="370" rx="10" fill="#1b4f72"/>
+<text x="750" y="54" text-anchor="middle" font-size="14" font-weight="bold" fill="#ffffff" font-family="Helvetica, Arial, sans-serif">Classic ESP32 (LOLIN32)</text>
+<text x="750" y="392" text-anchor="middle" font-size="11" fill="#d0d7de" font-family="Helvetica, Arial, sans-serif">relay image ows-relay-esp32-*</text>
+<path d="M176,112 C415,112 415,95 654,95" fill="none" stroke="#8e1b1b" stroke-width="4" stroke-linecap="round"/>
+<circle cx="654" cy="95" r="7" fill="#d4b483" stroke="#ffffff" stroke-width="2"/>
+<text x="670" y="100" font-size="14" font-weight="bold" fill="#ffffff" font-family="Helvetica, Arial, sans-serif">GND</text>
+<path d="M108,136 C381,136 381,145 654,145" fill="none" stroke="#1e88e5" stroke-width="4" stroke-linecap="round"/>
+<circle cx="654" cy="145" r="7" fill="#d4b483" stroke="#ffffff" stroke-width="2"/>
+<text x="670" y="150" font-size="14" font-weight="bold" fill="#ffffff" font-family="Helvetica, Arial, sans-serif">23</text>
+<text x="740" y="150" font-size="11" fill="#d0d7de" font-family="Helvetica, Arial, sans-serif">bootloader</text>
+<path d="M91,254 C372,254 372,195 654,195" fill="none" stroke="#2e9e3e" stroke-width="4" stroke-linecap="round"/>
+<circle cx="654" cy="195" r="7" fill="#d4b483" stroke="#ffffff" stroke-width="2"/>
+<text x="670" y="200" font-size="14" font-weight="bold" fill="#ffffff" font-family="Helvetica, Arial, sans-serif">4</text>
+<text x="740" y="200" font-size="11" fill="#d0d7de" font-family="Helvetica, Arial, sans-serif">reset</text>
+<path d="M302,270 C478,270 478,245 654,245" fill="none" stroke="#f48fb1" stroke-width="4" stroke-linecap="round"/>
+<circle cx="654" cy="245" r="7" fill="#d4b483" stroke="#ffffff" stroke-width="2"/>
+<text x="670" y="250" font-size="14" font-weight="bold" fill="#ffffff" font-family="Helvetica, Arial, sans-serif">3V</text>
+<path d="M375,295 C515,295 515,295 654,295" fill="none" stroke="#5c7fa8" stroke-width="4" stroke-linecap="round"/>
+<circle cx="654" cy="295" r="7" fill="#d4b483" stroke="#ffffff" stroke-width="2"/>
+<text x="670" y="300" font-size="14" font-weight="bold" fill="#ffffff" font-family="Helvetica, Arial, sans-serif">17</text>
+<text x="740" y="300" font-size="11" fill="#d0d7de" font-family="Helvetica, Arial, sans-serif">UART1 TX</text>
+<path d="M356,325 C505,325 505,345 654,345" fill="none" stroke="#9ccc28" stroke-width="4" stroke-linecap="round"/>
+<circle cx="654" cy="345" r="7" fill="#d4b483" stroke="#ffffff" stroke-width="2"/>
+<text x="670" y="350" font-size="14" font-weight="bold" fill="#ffffff" font-family="Helvetica, Arial, sans-serif">18</text>
+<text x="740" y="350" font-size="11" fill="#d0d7de" font-family="Helvetica, Arial, sans-serif">UART1 RX</text>
+<text x="40" y="440" font-size="12" fill="#1f2328" font-family="Helvetica, Arial, sans-serif">Six wires; pin names as printed on the ESP board. R is the contact's input (the ESP transmits), T its output.</text>
+<text x="40" y="460" font-size="12" fill="#1f2328" font-family="Helvetica, Arial, sans-serif">The ESP powers the contact from its 3.3 V pin (battery out). S and W let the relay reset and reflash the contact by itself.</text>
+</svg>

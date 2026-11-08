@@ -1,0 +1,17 @@
+# C static checks (run by tools/lint.sh on the host build's compile_commands.json)
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-signed-bitwise,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-reserved-identifier,
+  clang-analyzer-*,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  cert-str34-c,
+  misc-redundant-expression,
+  readability-braces-around-statements,
+  readability-misleading-indentation,
+  readability-duplicate-include
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*/(common|relay|contact|web|rig|host)/.*'

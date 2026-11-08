@@ -1,0 +1,26 @@
+idf_component_register(
+    SRCS
+        "../../relay/relay.c"
+        "../../relay/ws_frame.c"
+        "../../relay/ws_handshake.c"
+        "../../relay/sha1.c"
+        "../../relay/base64.c"
+        "../../relay/ring.c"
+        "../../contact/sbl.c"
+        "../../contact/cjtag.c"
+        "../../contact/gwsync.c"
+        "../../contact/gwnv.c"
+        "../../web/buffer.c"
+        "../../web/multipart.c"
+        "../../web/http_auth.c"
+        "../../web/mdns.c"
+        "../../rig/rig.c"
+        "../../common/host_proto.c"
+    INCLUDE_DIRS
+        "../../relay"
+        "../../contact"
+        "../../web"
+        "../../rig"
+        "../../common"
+)
+target_compile_options(${COMPONENT_LIB} PRIVATE -Wall -Wextra -Werror)

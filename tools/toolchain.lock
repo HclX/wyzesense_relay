@@ -1,0 +1,6 @@
+# Pinned build tools, fetched into .toolchain/ by tools/toolchain.sh. Sourced by shell: KEY=VALUE only.
+# ESP-IDF (`tools/toolchain.sh esp-idf`): the ESP32 / ESP32-S3 relay firmware (idf/). The release
+# zip includes its submodules; its install.sh then fetches the esp32 and esp32s3 tools into .toolchain/espressif.
+ESP_IDF_VERSION=v5.5.6
+ESP_IDF_URL=https://github.com/espressif/esp-idf/releases/download/v5.5.6/esp-idf-v5.5.6.zip
+ESP_IDF_SHA256=d6c08f2bd7f0875c46c65cb5a34f83337bea092c9b0337405f62d1923ed73ddb

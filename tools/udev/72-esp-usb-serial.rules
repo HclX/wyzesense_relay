@@ -1,0 +1,7 @@
+# The USB serial chips of ESP32 / ESP8266 boards (the relay, esp32/README.md), for users in plugdev, whatever port they
+# are plugged into: Silicon Labs CP210x (NodeMCU, many ESP32 boards), WCH CH340 / CH9102 (D1 mini, cheaper boards),
+# and the ESP32-S3's own USB serial/JTAG. ID_MM_DEVICE_IGNORE keeps ModemManager from probing them.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", MODE="0660", GROUP="plugdev", TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", MODE="0660", GROUP="plugdev", TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d4", MODE="0660", GROUP="plugdev", TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", MODE="0660", GROUP="plugdev", TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"
