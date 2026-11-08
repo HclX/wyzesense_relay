@@ -45,6 +45,10 @@ void settings_load(void)
     if (nvs_get_u8(h, "skip_gwsync", &skip) == ESP_OK) {
         settings.skip_gwsync = skip != 0;
     }
+    uint8_t stock_gw = 0;
+    if (nvs_get_u8(h, "stock_gw", &stock_gw) == ESP_OK) {
+        settings.stock_gw = stock_gw != 0;
+    }
     uint8_t rig = 0;
     if (nvs_get_u8(h, "rig", &rig) == ESP_OK) {
         settings.rig = rig != 0;
@@ -75,6 +79,7 @@ bool settings_save(void)
               nvs_set_str(h, "wire_r", settings.wire_r) == ESP_OK &&
               nvs_set_str(h, "wire_t", settings.wire_t) == ESP_OK &&
               nvs_set_u8(h, "skip_gwsync", settings.skip_gwsync ? 1 : 0) == ESP_OK &&
+              nvs_set_u8(h, "stock_gw", settings.stock_gw ? 1 : 0) == ESP_OK &&
               nvs_set_u8(h, "rig", settings.rig ? 1 : 0) == ESP_OK && nvs_set_u8(h, "role", settings.role) == ESP_OK &&
               nvs_set_u8(h, "cflash", settings.contact_flash) == ESP_OK && nvs_commit(h) == ESP_OK;
     nvs_close(h);

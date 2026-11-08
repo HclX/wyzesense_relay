@@ -777,6 +777,18 @@ int main(void)
         CHECK(memcmp(p31, code, sizeof code) == 0 && memcmp(p31 + sizeof code, before + sizeof code, 88) == 0);
         CHECK(cjtag_write_page31_code(&cj, code, page_buf, orig) == 0);  // already so
         CHECK(cjtag_flash_page(&cj, 2, new_page, false));                // the new CRC is the one checked now
+
+        // Stock gateway image (N * CJTAG_PAGE + CJTAG_PAGE31_CODE_LEN): writes app pages + page 31 code, keeps CCFG
+        static uint8_t stock_img[(size_t)2 * CJTAG_PAGE + CJTAG_PAGE31_CODE_LEN];
+        memcpy(stock_img, sim.flash, (size_t)2 * CJTAG_PAGE);
+        memset(stock_img + CJTAG_PAGE, 0x91, CJTAG_PAGE);
+        memset(stock_img + (size_t)2 * CJTAG_PAGE, 0x5E, CJTAG_PAGE31_CODE_LEN);
+        CHECK(cjtag_write_image(&cj, image_fn, stock_img, sizeof stock_img, page_buf) == 2);
+        CHECK(memcmp(sim.flash + CJTAG_PAGE, stock_img + CJTAG_PAGE, CJTAG_PAGE) == 0);
+        CHECK(memcmp(p31, stock_img + (size_t)2 * CJTAG_PAGE, CJTAG_PAGE31_CODE_LEN) == 0);
+        CHECK(memcmp(p31 + CJTAG_PAGE31_CODE_LEN, before + CJTAG_PAGE31_CODE_LEN, 88) == 0);
+        CHECK(cjtag_write_image(&cj, image_fn, stock_img, sizeof stock_img, page_buf) == 0);
+
         put_le32(cc + CJTAG_CCFG_IMAGE_VALID, 0x00000001u);  // image not valid (ccfg-rule.md): refused, untouched
         cjtag_init(&cj, &io);
         CHECK(cjtag_connect(&cj, true));

@@ -49,6 +49,9 @@ typedef struct {
     buffer_sensor_t sensors[BUFFER_SENSORS];
     unsigned sensor_count;
     char gateway_mac[9];
+    bool translate_sync;  // CH554 0x43 <-> 0x53 sync command translation for stock CC1310 gateway firmware
+    bool sync_pending;
+    uint8_t sync_cmd;
 } buffer_t;
 
 // uart_write(ctx, ...): the real UART. The platform's relay_io_t uart_write callback calls buffer_from_server(), and

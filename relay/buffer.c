@@ -72,6 +72,7 @@ static void sync_state(buffer_t *b, uint32_t now_ms)
     if (b->relay->state != RELAY_OPEN) {
         b->acks_to_keep = 0;  // a new connection: no ACKs of the last one's replays will come
         b->up_len = 0;
+        b->sync_pending = false;
         return;
     }
     if (b->relay->connects != b->connects_seen) {  // just connected: the server's handshake first
@@ -80,6 +81,7 @@ static void sync_state(buffer_t *b, uint32_t now_ms)
         b->next_replay_ms = now_ms + BUFFER_REPLAY_AFTER;
         b->acks_to_keep = 0;
         b->up_len = 0;
+        b->sync_pending = false;
     }
     if (b->acks_to_keep && (int32_t)(now_ms - (b->last_replay_ms + BUFFER_ACK_TIMEOUT)) >= 0) {
         b->acks_to_keep = 0;
@@ -166,10 +168,28 @@ static void record_sensor(buffer_t *b, const host_pkt_t *p, uint32_t now_ms)
     b->sensors[idx].last_seen_ms = now_ms;
 }
 
+static bool is_sync_req_ack(const buffer_t *b, uint16_t acked)
+{
+    if ((acked >> 8) != HOST_ASYNC) {
+        return false;
+    }
+    // only the request this relay translated: an async one the host sent itself keeps its ACK
+    return b->sync_pending && (uint8_t)acked == b->sync_cmd;
+}
+
+static bool is_sync_rsp(const buffer_t *b, uint16_t pkt_cmd)
+{
+    if ((pkt_cmd >> 8) != HOST_ASYNC) {
+        return false;
+    }
+    // only the reply to the request this relay translated: the same reply ID to an async request stays async
+    return b->sync_pending && (uint8_t)pkt_cmd == (uint8_t)(b->sync_cmd + 1);
+}
+
 void buffer_from_gateway(buffer_t *b, const uint8_t *data, size_t len, uint32_t now_ms)
 {
     sync_state(b, now_ms);
-    if (settled(b, now_ms) && !b->count && !b->up_len) {
+    if (settled(b, now_ms) && !b->count && !b->up_len && !b->translate_sync) {
         relay_on_uart(b->relay, data, len, now_ms);
         bool sent = b->relay->state == RELAY_OPEN;
         if (!sent) {
@@ -211,13 +231,34 @@ void buffer_from_gateway(buffer_t *b, const uint8_t *data, size_t len, uint32_t 
         if (!host_rx_feed(&b->up, data[i], &p)) {
             continue;
         }
+        size_t n = p.len + 7;  // magic 2, type, b2, cmd, payload, checksum 2
+        if (b->translate_sync && p.to_host) {
+            if (p.cmd == HOST_ACK && is_sync_req_ack(b, p.acked)) {
+                if (b->relay->state == RELAY_OPEN && n <= b->up_len) {
+                    b->up_len -= n;
+                    if (b->up_len) {
+                        relay_on_uart(b->relay, b->up_pending, b->up_len, now_ms);
+                    }
+                }
+                b->up_len = 0;
+                continue;
+            }
+            if (p.cmd != HOST_ACK && is_sync_rsp(b, p.cmd)) {
+                uint8_t ack[16];
+                b->uart_write(b->ctx, ack, host_build_ack(ack, p.cmd, false));
+                p.cmd = (uint16_t)((uint16_t)HOST_SYNC << 8 | (p.cmd & 0xFF));
+                b->sync_pending = false;
+                if (b->relay->state == RELAY_OPEN && n <= b->up_len) {
+                    host_build(b->up_pending + b->up_len - n, p.cmd, p.payload, p.len, true);
+                }
+            }
+        }
         if (p.to_host && p.cmd == 0x4305) {
             record_gateway_mac(b, &p);
         }
         if (p.to_host && p.cmd == HOST_ALARM) {
             record_sensor(b, &p, now_ms);
         }
-        size_t n = p.len + 7;  // magic 2, type, b2, cmd, payload, checksum 2
         if (p.to_host && p.cmd == HOST_ALARM && (!settled(b, now_ms) || b->count > 0)) {
             if (b->relay->state == RELAY_OPEN && n < b->up_len) {
                 relay_on_uart(b->relay, b->up_pending, b->up_len - n, now_ms);
@@ -301,11 +342,21 @@ void buffer_from_server(buffer_t *b, const uint8_t *data, size_t len)
         } else if (b->acks_to_keep && !p.to_host && p.cmd == HOST_ACK && p.acked == HOST_ALARM && n <= b->down_len) {
             b->acks_to_keep--;  // the ACK of a replayed alarm: the gateway had its ACK already
             b->down_len -= n;
+        } else if (b->translate_sync && !p.to_host && (p.cmd >> 8) == HOST_SYNC && n <= b->down_len) {
+            uint8_t cmd_lo = (uint8_t)p.cmd;
+            if (cmd_lo == 0xFF) {
+                b->down_len -= n;  // 0x43FF ACK: already ACKed as 0x53FF on the UART when the reply arrived
+            } else {
+                host_build(b->down_pending + b->down_len - n, (uint16_t)((uint16_t)HOST_ASYNC << 8 | cmd_lo), p.payload,
+                           p.len, false);
+                b->sync_cmd = cmd_lo;
+                b->sync_pending = true;
+            }
         }
         b->uart_write(b->ctx, b->down_pending, b->down_len);
         b->down_len = 0;
     }
-    if (b->down_len && !b->acks_to_keep && !packet_in_progress(&b->down)) {
+    if (b->down_len && !b->acks_to_keep && !b->translate_sync && !packet_in_progress(&b->down)) {
         b->uart_write(b->ctx, b->down_pending, b->down_len);
         b->down_len = 0;
     }

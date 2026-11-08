@@ -339,6 +339,23 @@ bool contact_flash(const uint8_t *image, size_t len, const char *expect_mac, boo
 
 extern const uint8_t gw_image_start[] asm("_binary_gateway_contact_v1_app_bin_start");
 extern const uint8_t gw_image_end[] asm("_binary_gateway_contact_v1_app_bin_end");
+extern const uint8_t gw_stock_start[] asm("_binary_gateway_stock_v1_8_app_bin_start");
+extern const uint8_t gw_stock_end[] asm("_binary_gateway_stock_v1_8_app_bin_end");
+
+bool contact_stock_gw_available(void)
+{
+    return (size_t)(gw_stock_end - gw_stock_start) > GWSYNC_PAGE31_CODE_LEN;
+}
+
+static const uint8_t *active_gw_image(uint32_t *len_out)
+{
+    if (settings.stock_gw && contact_stock_gw_available()) {
+        *len_out = (uint32_t)(gw_stock_end - gw_stock_start);
+        return gw_stock_start;
+    }
+    *len_out = (uint32_t)(gw_image_end - gw_image_start);
+    return gw_image_start;
+}
 
 static gwsync_report_t gw_report;
 static bool gw_checked;
@@ -385,10 +402,12 @@ static void gw_sleep(void *ctx, uint32_t ms)
 static bool gw_image(void *ctx, uint32_t off, uint8_t *buf, size_t len)
 {
     (void)ctx;
-    if (off + len > (size_t)(gw_image_end - gw_image_start)) {
+    uint32_t img_len = 0;
+    const uint8_t *img = active_gw_image(&img_len);
+    if (off + len > img_len) {
         return false;
     }
-    memcpy(buf, gw_image_start + off, len);
+    memcpy(buf, img + off, len);
     return true;
 }
 
@@ -693,7 +712,8 @@ void contact_gwsync(void)
 {
     gwsync_io_t io = {sbl_write, sbl_read,    sbl_flush, gw_reset,       gw_bootloader,         gw_sleep,
                       gw_image,  gw_progress, NULL,      gw_cjtag_flash, settings.contact_flash};
-    uint32_t img_len = (uint32_t)(gw_image_end - gw_image_start);
+    uint32_t img_len = 0;
+    active_gw_image(&img_len);
     contact_uart_take(portMAX_DELAY);
     if (settings.skip_gwsync) {
         gwsync_probe(&io, img_len, s_page, &gw_report);

@@ -386,6 +386,94 @@ int main(void)
     buffer_tick(&buf, t_open + BUFFER_REPLAY_AFTER);
     CHECK(to_server(got) == an && !memcmp(got, a, an) && buf.count == 0 && buf.acks_to_keep == 1);
 
+    // CH554 sync translation (0x43 <-> 0x53) for stock CC1310 gateway firmware:
+    // 1. Server 0x4327 (INQUIRY) -> UART 0x5327; gateway 0x53FF (ACK 0x27) dropped; gateway 0x5328 -> UART ACK 0x5328 + server 0x4328
+    // 2. Server 0x4304 (GET_MAC) -> UART 0x5304; gateway 0x53FF (ACK 0x04) dropped; gateway 0x5305 -> UART ACK 0x5305 + server 0x4305 + records gateway_mac
+    // 3. Server 0x4302 (GET_ENR) -> UART 0x5302; gateway 0x53FF (ACK 0x02) dropped; gateway 0x5303 -> UART ACK 0x5303 + server 0x4303
+    // 4. Server 0x43FF ACK is dropped (already ACKed on UART)
+    buffer_init(&buf, &r, real_uart, NULL);
+    buf.translate_sync = true;
+    relay_on_tcp_closed(&r, 70000);
+    uint32_t t_stock = 70000 + RELAY_RECONNECT_MS;
+    handshake(&r, t_stock);
+    f.sent_len = f.uart_len = 0;
+
+    uint8_t req43[32], exp53[32], gw_ack[16], gw_rsp53[32], exp_ack53[16], exp_rsp43[32];
+    size_t n_req = host_build(req43, HOST_INQUIRY, NULL, 0, false);
+    size_t n_exp53 = host_build(exp53, 0x5327, NULL, 0, false);
+    server_says(&r, req43, n_req, t_stock + 4000);
+    CHECK(f.uart_len == n_exp53 && !memcmp(f.uart, exp53, n_exp53));
+    f.uart_len = 0;
+
+    size_t n_gw_ack = host_build_ack(gw_ack, 0x5327, true);
+    size_t n_gw_rsp = host_build(gw_rsp53, 0x5328, (const uint8_t *)"\x01", 1, true);
+    size_t n_exp_ack = host_build_ack(exp_ack53, 0x5328, false);
+    size_t n_exp_rsp = host_build(exp_rsp43, 0x4328, (const uint8_t *)"\x01", 1, true);
+    buffer_from_gateway(&buf, gw_ack, n_gw_ack, t_stock + 4010);
+    CHECK(f.sent_len == 0 && f.uart_len == 0);
+    buffer_from_gateway(&buf, gw_rsp53, n_gw_rsp, t_stock + 4020);
+    CHECK(f.uart_len == n_exp_ack && !memcmp(f.uart, exp_ack53, n_exp_ack));
+    CHECK(to_server(got) == n_exp_rsp && !memcmp(got, exp_rsp43, n_exp_rsp));
+    f.sent_len = f.uart_len = 0;
+
+    // GET_MAC (0x4304 -> 0x5304 -> 0x5305 -> 0x4305)
+    n_req = host_build(req43, HOST_GET_MAC, NULL, 0, false);
+    n_exp53 = host_build(exp53, 0x5304, NULL, 0, false);
+    server_says(&r, req43, n_req, t_stock + 4100);
+    CHECK(f.uart_len == n_exp53 && !memcmp(f.uart, exp53, n_exp53));
+    f.uart_len = 0;
+
+    n_gw_ack = host_build_ack(gw_ack, 0x5304, true);
+    n_gw_rsp = host_build(gw_rsp53, 0x5305, (const uint8_t *)"77A85A36", 8, true);
+    n_exp_ack = host_build_ack(exp_ack53, 0x5305, false);
+    n_exp_rsp = host_build(exp_rsp43, 0x4305, (const uint8_t *)"77A85A36", 8, true);
+    buffer_from_gateway(&buf, gw_ack, n_gw_ack, t_stock + 4110);
+    buffer_from_gateway(&buf, gw_rsp53, n_gw_rsp, t_stock + 4120);
+    CHECK(f.uart_len == n_exp_ack && !memcmp(f.uart, exp_ack53, n_exp_ack));
+    CHECK(to_server(got) == n_exp_rsp && !memcmp(got, exp_rsp43, n_exp_rsp));
+    CHECK(!strcmp(buf.gateway_mac, "77A85A36"));
+    f.sent_len = f.uart_len = 0;
+
+    // Server 0x43FF ACK is suppressed on UART
+    uint8_t ack43[16];
+    size_t n_ack43 = host_build_ack(ack43, 0x4305, false);
+    server_says(&r, ack43, n_ack43, t_stock + 4130);
+    CHECK(f.uart_len == 0);
+
+    // GET_ENR (0x4302 -> 0x5302 -> 0x5303 -> 0x4303)
+    static const uint8_t enr_chal[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+    static const uint8_t enr_ans[16] = {16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1};
+    n_req = host_build(req43, HOST_GET_ENR, enr_chal, sizeof enr_chal, false);
+    n_exp53 = host_build(exp53, 0x5302, enr_chal, sizeof enr_chal, false);
+    server_says(&r, req43, n_req, t_stock + 4200);
+    CHECK(f.uart_len == n_exp53 && !memcmp(f.uart, exp53, n_exp53));
+    f.uart_len = 0;
+
+    n_gw_ack = host_build_ack(gw_ack, 0x5302, true);
+    n_gw_rsp = host_build(gw_rsp53, 0x5303, enr_ans, sizeof enr_ans, true);
+    n_exp_ack = host_build_ack(exp_ack53, 0x5303, false);
+    n_exp_rsp = host_build(exp_rsp43, 0x4303, enr_ans, sizeof enr_ans, true);
+    buffer_from_gateway(&buf, gw_ack, n_gw_ack, t_stock + 4210);
+    buffer_from_gateway(&buf, gw_rsp53, n_gw_rsp, t_stock + 4220);
+    CHECK(f.uart_len == n_exp_ack && !memcmp(f.uart, exp_ack53, n_exp_ack));
+    CHECK(to_server(got) == n_exp_rsp && !memcmp(got, exp_rsp43, n_exp_rsp));
+    f.sent_len = f.uart_len = 0;
+
+    // An async request the host sends itself (0x5306, Get ENR key) is not translated: it goes out as it is, its
+    // 0x53FF ACK and its 0x5307 reply go to the host unchanged, and the relay does not ACK the reply itself
+    uint8_t req53[16], key[32];
+    size_t n_req53 = host_build(req53, 0x5306, NULL, 0, false);
+    server_says(&r, req53, n_req53, t_stock + 4300);
+    CHECK(f.uart_len == n_req53 && !memcmp(f.uart, req53, n_req53));
+    f.uart_len = 0;
+    n_gw_ack = host_build_ack(gw_ack, 0x5306, true);
+    size_t n_key = host_build(key, 0x5307, (const uint8_t *)"WYZE098765432101", 16, true);
+    buffer_from_gateway(&buf, gw_ack, n_gw_ack, t_stock + 4310);
+    buffer_from_gateway(&buf, key, n_key, t_stock + 4320);
+    CHECK(f.uart_len == 0);
+    size_t n_got = to_server(got);
+    CHECK(n_got == n_gw_ack + n_key && !memcmp(got, gw_ack, n_gw_ack) && !memcmp(got + n_gw_ack, key, n_key));
+
     printf("%d checks, %d failed\n", checks, failures);
     return failures != 0;
 }

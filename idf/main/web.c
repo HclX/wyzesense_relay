@@ -129,7 +129,8 @@ static esp_err_t api_status(httpd_req_t *req)
     int len = snprintf(
         body, 6144,
         "{\"name\":%s,\"mdns\":%s,\"ssid\":%s,\"url\":%s,\"ip\":%s,\"ap\":%s,\"auth\":%s,"
-        "\"role\":%u,\"skip_gwsync\":%s,\"contact_flash\":\"%s\",\"rssi\":%d,\"relay\":\"%s\",\"connects\":%"
+        "\"role\":%u,\"skip_gwsync\":%s,\"gw_fw\":\"%s\",\"stock_available\":%s,\"contact_flash\":\"%s\",\"rssi\":%d,"
+        "\"relay\":\"%s\",\"connects\":%"
         "lu,\"queued\":%lu,"
         "\"replayed\":%lu,\"dropped\":%lu,\"waiting\":%u,\"uart_tx\":%lu,\"uart_rx\":%lu,"
         "\"uptime\":%lu,\"heap\":%lu,\"log\":%s,\"flash\":%s,\"contact_mac\":%s,"
@@ -139,7 +140,8 @@ static esp_err_t api_status(httpd_req_t *req)
         "\"running\":%s},\"sensors\":[",
         name, mdns, ssid, url, ip, net_setup_ap() ? "true" : "false",
         http_auth_secret(settings.admin_pass, settings.token) ? "true" : "false", (unsigned)settings.role,
-        settings.skip_gwsync ? "true" : "false", vias[settings.contact_flash % 3], rssi, relay_state,
+        settings.skip_gwsync ? "true" : "false", settings.stock_gw ? "stock" : "ows",
+        contact_stock_gw_available() ? "true" : "false", vias[settings.contact_flash % 3], rssi, relay_state,
         (unsigned long)(settings.role == ROLE_STATION ? 0 : relay_task_connects()), (unsigned long)queued,
         (unsigned long)replayed, (unsigned long)dropped, waiting, (unsigned long)uart_tx, (unsigned long)uart_rx,
         (unsigned long)(esp_timer_get_time() / 1000000), (unsigned long)esp_get_free_heap_size(), log_js, flash,
@@ -275,9 +277,12 @@ static esp_err_t setup_post(httpd_req_t *req)
     set_field(body, "url", settings.url, sizeof settings.url, true);
     set_field(body, "token", settings.token, sizeof settings.token, true);
     set_field(body, "admin_pass", settings.admin_pass, sizeof settings.admin_pass, false);
-    char skip[16] = "", via[8] = "";
+    char skip[16] = "", via[8] = "", gw_fw[16] = "";
     if (form_value(body, "skip_gwsync", skip, sizeof skip)) {
         settings.skip_gwsync = skip[0] == '1' || !strcmp(skip, "true") || !strcmp(skip, "on");
+    }
+    if (form_value(body, "gw_fw", gw_fw, sizeof gw_fw) && gw_fw[0]) {
+        settings.stock_gw = !strcmp(gw_fw, "stock") || gw_fw[0] == '1';
     }
     if (form_value(body, "contact_flash", via, sizeof via)) {  // how gwsync reflashes the contact (#81)
         settings.contact_flash = !strcmp(via, "cjtag") ? GWSYNC_VIA_CJTAG

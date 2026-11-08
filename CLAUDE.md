@@ -38,3 +38,31 @@ tools/idf.sh build
 # Build ESP8266 firmware
 tools/pio.sh run
 ```
+
+## Rules (carried over from openwyzesense; they still hold here)
+
+- **Radio:** the relay itself never transmits on 906.8 MHz, but the gateway image it carries does. Flashing a gateway
+  that can transmit, or running anything that makes it transmit, needs the user's OK. Test PANs only (0x65FE, 0x65FD,
+  0x65FC); never the house PAN 0x845B without the user's explicit OK each time.
+- **CCFG / page 31** (the CCFG rule, `docs/design/ccfg-rule.md` in openwyzesense, the user 2026-11-07): never a debug
+  port off, protection bits, `IMAGE_VALID_CONF`, an unreachable bootloader, or a dongle's page 31. Program-only fills of
+  blank bytes are fine. Erase-and-rewrite of page 31 only with a backup, M/C wired, stable power, the guards
+  (`ccfg_safe`, `cjtag_write_page31_code` keeps the unit's CCFG byte for byte and puts page 31 back on a failure),
+  and logged. Every page-31 writer goes through `cjtag_write_page31_code`.
+- **Stock devices:** back up a unit's whole flash read-only before its first write.
+- **Proprietary firmware never goes into this public repository:** stock images, dumps, and ESP builds that embed a
+  stock image. `firmware/gateway-stock*.bin` is gitignored; CI builds with a placeholder.
+- **GitHub:** `gh` only on HclX repositories the user names. Branch per issue with a PR; push only when asked.
+
+## Stock gateway firmware on a contact board
+
+The relay can carry the stock Wyze v1.8 dongle gateway firmware next to ours (Setup: gateway firmware `ows` / `stock`).
+- **Image:** `gateway_image.py --stock OUT` packs it from a local stock dump as pages 0-23 (0x18000 bytes) plus
+  page 31's code (0xFA8 bytes, before the CCFG), 0x18FA8 bytes in all; a 4-byte placeholder when there is none (CI).
+  The ESP builds embed `firmware/gateway-stock-v1.8-app.bin` if present (`kStockGatewayImage`).
+- **Flashing:** only through the debug port (cJTAG): the bootloader cannot write page 31, so `gwsync` refuses a stock
+  image without it. The unit's CCFG (its MAC) stays byte for byte.
+- **Identity:** the stock CC1310 has no CH554 in front of it, so the relay does the CH554's part: `buffer.translate_sync`
+  (`ows-relay --stock`) rewrites the host's sync requests `0x43xx` to `0x53xx`, ACKs the CC1310's reply on the UART and
+  hands it to the host as `0x43xx`; only the request it translated, never the host's own async ones. After flashing,
+  `gwsync` writes the contact's CCFG MAC into the stock NV with `0x5308` (Write MAC, FACTS.md in openwyzesense).

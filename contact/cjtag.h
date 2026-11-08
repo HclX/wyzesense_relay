@@ -17,6 +17,7 @@
 #define CJTAG_NV_PAGE_IDX      30u                               // page 30 (0x1E000)
 #define CJTAG_CCFG_PAGE_IDX    31u                               // page 31 (0x1F000): never erased or written
 #define CJTAG_CCFG_ADDR        0x0001FFA8u
+#define CJTAG_PAGE31_CODE_LEN  (CJTAG_CCFG_ADDR - CJTAG_CCFG_PAGE_IDX * CJTAG_PAGE)  // 0xFA8 (4008 B)
 #define CJTAG_FCFG1_ADDR       0x50001000u
 #define CJTAG_FCFG1_SIZE       0x00000400u  // 1 KB factory configuration
 #define CJTAG_CCFG_SIZE        88u          // 0x0001FFA8..0x0001FFFF

@@ -93,7 +93,7 @@ static void on_signal(int s)
 int main(int argc, char **argv)
 {
     const char *device = "/dev/ttyACM0", *url = "ws://127.0.0.1:8080/ws/bridge", *token = NULL;
-    bool buffered = true;
+    bool buffered = true, stock = false;
     for (int i = 1; i < argc; i++) {
         bool value = i + 1 < argc;
         if (value && (!strcmp(argv[i], "--device") || !strcmp(argv[i], "-d"))) {
@@ -104,9 +104,12 @@ int main(int argc, char **argv)
             token = argv[++i];
         } else if (!strcmp(argv[i], "--no-buffer")) {
             buffered = false;
+        } else if (!strcmp(argv[i], "--stock") || !strcmp(argv[i], "--translate-sync")) {
+            stock = true;
         } else {
             fprintf(stderr,
-                    "usage: %s [--device PATH] [--gateway ws://host:port/path] [--token SECRET] [--no-buffer]\n",
+                    "usage: %s [--device PATH] [--gateway ws://host:port/path] [--token SECRET] [--stock] "
+                    "[--no-buffer]\n",
                     argv[0]);
             return 2;
         }
@@ -125,6 +128,7 @@ int main(int argc, char **argv)
     sock_link_init(&tcp_link, 5000);
     sock_link_set_nonblocking(&tcp_link, true);
     buffer_init(&buffer, &r, uart_write, NULL);
+    buffer.translate_sync = stock;
     if (!relay_init(&r, url, device, token, &io)) {
         fprintf(stderr, "%s: not a ws:// URL this relay can use\n", url);
         return 2;

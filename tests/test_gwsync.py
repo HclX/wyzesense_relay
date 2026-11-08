@@ -56,9 +56,10 @@ def image(seed, app='gateway', with_block=True, size=9000, version=None):
 class FakeContact(FakeRom):
     """The contact: its gateway firmware, or (after "B" on the control FIFO or OWS_SUB_ENTER_SBL) its ROM bootloader."""
 
-    def __init__(self, fd, ctl, flash, hung=False, chatter=False, soft_sbl=False):
+    def __init__(self, fd, ctl, flash, hung=False, chatter=False, soft_sbl=False, stock_mac=None):
         super().__init__(fd, flash)
         self.ctl, self.hung, self.chatter, self.soft_sbl = ctl, hung, chatter, soft_sbl
+        self.stock_mac = stock_mac
         self.mode, self.pads, self.gwbuf = 'gw', [], b''
         self.jtag_image = None  # what "J" (written through the debug port, #81) puts in pages 0-29
 
@@ -74,7 +75,12 @@ class FakeContact(FakeRom):
                 for line in os.read(self.ctl, 64).decode().split():
                     self.pads.append(line)
                     if line == 'J' and self.jtag_image is not None:  # the debug port writes, then resets into it
-                        self.flash[: len(self.jtag_image)] = self.jtag_image
+                        if len(self.jtag_image) > 0xFA8 and (len(self.jtag_image) - 0xFA8) % 4096 == 0:
+                            app_len = len(self.jtag_image) - 0xFA8
+                            self.flash[:app_len] = self.jtag_image[:app_len]
+                            self.flash[0x1F000 : 0x1F000 + 0xFA8] = self.jtag_image[app_len:]
+                        else:
+                            self.flash[: len(self.jtag_image)] = self.jtag_image
                     self.mode = 'rom' if line == 'B' else 'gw'
                     self.synced, self.buf, self.gwbuf, self.await_ack = False, b'', b'', False
                     with contextlib.suppress(OSError):  # what was on the line before the reset is lost
@@ -96,7 +102,10 @@ class FakeContact(FakeRom):
             m = host.parse(p)
             if m['to_host'] or self.hung:
                 continue
+            is_stock = image_id.find(bytes(self.flash[:1024])) < 0 and self.flash[0x1F000] != 0xFF
             if m['cmd'] == host.OWS_CMD and m['payload'][:1] == bytes([host.OWS_SUB_BUILD_INFO]):
+                if is_stock:
+                    continue
                 os.write(self.fd, host.build_ack(host.OWS_CMD, to_host=True))
                 part = m['payload'][1] if len(m['payload']) > 1 else 0
                 at = image_id.find(bytes(self.flash[:1024]))
@@ -111,7 +120,18 @@ class FakeContact(FakeRom):
                     else:
                         rsp = bytes([host.OWS_SUB_BUILD_INFO])
                     os.write(self.fd, host.build(host.OWS_RSP, rsp, to_host=True))
-            elif m['cmd'] == 0x4304:
+            elif m['cmd'] == 0x5316 and is_stock:
+                os.write(self.fd, host.build_ack(0x5316, to_host=True))
+                os.write(self.fd, host.build(0x5317, STOCK_VERSION.encode(), to_host=True))
+            elif m['cmd'] == 0x5304 and is_stock:
+                os.write(self.fd, host.build_ack(0x5304, to_host=True))
+                mac = self.stock_mac if self.stock_mac is not None else b'\xff' * 8
+                os.write(self.fd, host.build(0x5305, mac, to_host=True))
+            elif m['cmd'] == 0x5308 and is_stock and len(m['payload']) == 8:
+                os.write(self.fd, host.build_ack(0x5308, to_host=True))
+                self.stock_mac = m['payload']
+                os.write(self.fd, host.build(0x5309, bytes([0x01]), to_host=True))
+            elif m['cmd'] == 0x4304 and not is_stock:
                 os.write(self.fd, host.build_ack(0x4304, to_host=True))
                 mac = bytes(self.flash[0x1FFCC : 0x1FFCC + 8])
                 os.write(self.fd, host.build(0x4305, mac, to_host=True))
@@ -392,3 +412,54 @@ def test_the_real_gateway_image_has_a_block():  # what the relays will carry
         pytest.skip('build the fw preset first')
     info = image_id.parse(real.read_bytes())
     assert info['app'] == 'gateway' and info['product'] == 'gateway-contact-v1' and info['tx']
+
+
+STOCK_VERSION = '0.0.0.47 V1.8 Gateway GW3U'  # the stock v1.8 gateway's answer to 0x5316 (FACTS.md)
+
+
+def stock_image(pages=2):
+    rnd = random.Random(99)
+    app = bytearray(struct.pack('<II', 0x20005000, 0x00010539))
+    app += bytes(rnd.randrange(256) for _ in range(pages * 4096 - len(app)))
+    p31_code = bytes(0x4D ^ (i & 0xFF) for i in range(0xFA8))
+    return bytes(app) + p31_code
+
+
+def test_stock_gateway_same_image_not_written(contact, tmp_path):
+    stk = stock_image(2)
+    flash = chip()
+    flash[: 2 * 4096] = stk[: 2 * 4096]
+    flash[0x1F000 : 0x1F000 + 0xFA8] = stk[2 * 4096 :]
+    c, port, fifo = contact(flash, stock_mac=b'777B42DF')
+    code, out = run(port, fifo, stk, tmp_path)
+    assert code == 0 and out['result'] == 'same' and out['answered'] == 'yes' and out['stock'] == 'yes', out
+    assert out['carried'] == STOCK_VERSION and out['running'] == STOCK_VERSION and out['mac'] == '777B42DF'
+    assert c.pads == ['R'] and not c.writes
+
+
+def test_stock_gateway_replaces_ows_and_provisions_mac(contact, tmp_path):
+    stk = stock_image(2)
+    flash = chip()
+    put(flash, image(1))
+    before_ccfg = bytes(flash[0x1FFA8:0x20000])
+    c, port, fifo = contact(flash, stock_mac=None)
+    c.jtag_image = stk
+    code, out = run(port, fifo, stk, tmp_path, extra=('--cjtag', 'ok'))
+    assert code == 0 and out['result'] == 'updated' and out['stock'] == 'yes', out
+    assert out['running'] == STOCK_VERSION and out['mac'] == '777B42DF'
+    assert c.stock_mac == b'777B42DF'
+    assert bytes(flash[: 2 * 4096]) == stk[: 2 * 4096]
+    assert bytes(flash[0x1F000 : 0x1F000 + 0xFA8]) == stk[2 * 4096 :]
+    assert bytes(flash[0x1FFA8:0x20000]) == before_ccfg
+
+
+def test_stock_gateway_never_over_the_bootloader(contact, tmp_path):
+    # without the debug port the bootloader could write pages 0-29 only: the stock page-31 code would be left out
+    stk = stock_image(2)
+    flash = chip()
+    put(flash, image(1))
+    before = bytes(flash)
+    c, port, fifo = contact(flash, stock_mac=None)
+    code, out = run(port, fifo, stk, tmp_path)
+    assert code != 0 and out['result'] == 'failed' and any('debug port' in v for v in out.values()), out
+    assert bytes(flash) == before

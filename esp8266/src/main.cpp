@@ -32,10 +32,12 @@ struct Settings {
     uint32_t magic;
     char ssid[33], pass[65], url[128], token[64], admin_pass[64];
     uint8_t skip_gwsync;
+    uint8_t stock_gw;
 };
 constexpr uint32_t kMagicV1 = 0x4F575331;  // "OWS1" (without admin_pass, skip_gwsync)
 constexpr uint32_t kMagicV2 = 0x4F575332;  // "OWS2" (without skip_gwsync)
-constexpr uint32_t kMagic = 0x4F575333;    // "OWS3"
+constexpr uint32_t kMagicV3 = 0x4F575333;  // "OWS3" (without stock_gw)
+constexpr uint32_t kMagic = 0x4F575334;    // "OWS4"
 constexpr uint32_t kApDelayMs = 120000;
 constexpr uint32_t kApTimeoutMs = 900000;
 constexpr uint32_t kBackoffBaseMs = 1000;
@@ -157,9 +159,14 @@ void settings_load()
     if (settings.magic == kMagicV1) {
         memset(settings.admin_pass, 0, sizeof settings.admin_pass);
         settings.skip_gwsync = 0;
+        settings.stock_gw = 0;
         settings.magic = kMagic;
     } else if (settings.magic == kMagicV2) {
         settings.skip_gwsync = 0;
+        settings.stock_gw = 0;
+        settings.magic = kMagic;
+    } else if (settings.magic == kMagicV3) {
+        settings.stock_gw = 0;
         settings.magic = kMagic;
     } else if (settings.magic != kMagic) {
         memset(&settings, 0, sizeof settings);
@@ -267,6 +274,12 @@ void setup_post()
     if (server.hasArg("skip_gwsync")) {
         String s = server.arg("skip_gwsync");
         settings.skip_gwsync = (s == "1" || s == "true" || s == "on") ? 1 : 0;
+    }
+    if (server.hasArg("gw_fw")) {
+        String g = server.arg("gw_fw");
+        if (g.length()) {
+            settings.stock_gw = (g == "stock" || g == "1") ? 1 : 0;
+        }
     }
     if (!settings_save()) {
         server.send(500, "text/plain", "saving failed");
@@ -710,12 +723,29 @@ void gw_progress(void *, const char *step)
     gw_nsteps++;
 }
 
+bool stock_gw_available()
+{
+    return kStockGatewayImageLen > GWSYNC_PAGE31_CODE_LEN;
+}
+
+const uint8_t *active_gw_image(uint32_t *len_out)
+{
+    if (settings.stock_gw && stock_gw_available()) {
+        *len_out = kStockGatewayImageLen;
+        return kStockGatewayImage;
+    }
+    *len_out = kGatewayImageLen;
+    return kGatewayImage;
+}
+
 bool gw_image(void *, uint32_t off, uint8_t *buf, size_t len)
 {
-    if (off + len > kGatewayImageLen) {
+    uint32_t img_len = 0;
+    const uint8_t *img = active_gw_image(&img_len);
+    if (off + len > img_len) {
         return false;
     }
-    memcpy_P(buf, kGatewayImage + off, len);
+    memcpy_P(buf, img + off, len);
     return true;
 }
 
@@ -902,14 +932,17 @@ void gw_sync()
 {
     gwsync_io_t io = {sbl_out,  sbl_in,      sbl_drain, gw_reset,       gw_bootloader,  gw_sleep,
                       gw_image, gw_progress, nullptr,   gw_cjtag_flash, GWSYNC_VIA_AUTO};  // the debug port first (#81)
+    uint32_t img_len = 0;
+    active_gw_image(&img_len);
     gw_busy = true;
     if (settings.skip_gwsync) {
-        gwsync_probe(&io, kGatewayImageLen, sbl_page, &gw_report);
+        gwsync_probe(&io, img_len, sbl_page, &gw_report);
     } else {
-        gwsync_run(&io, kGatewayImageLen, &sbl, sbl_page, &gw_report);
+        gwsync_run(&io, img_len, &sbl, sbl_page, &gw_report);
     }
     gw_busy = false;
     gw_checked = true;
+    buffer.translate_sync = gw_report.stock || settings.stock_gw;
     snprintf(last_log, sizeof last_log, "gateway: %s", gw_report.msg);
     sbl_drain(nullptr);
 }
@@ -963,11 +996,13 @@ void api_status()
         ",\"url\":" + js(settings.url);
     b += ",\"ip\":" + js(WiFi.isConnected() ? WiFi.localIP().toString().c_str() : "");
     snprintf(n, sizeof n,
-             ",\"ap\":%s,\"auth\":%s,\"skip_gwsync\":%s,\"rssi\":%d,\"relay\":\"%s\",\"connects\":%lu,\"queued\":%lu,"
+             ",\"ap\":%s,\"auth\":%s,\"skip_gwsync\":%s,\"gw_fw\":\"%s\",\"stock_available\":%s,\"rssi\":%d,\"relay\":"
+             "\"%s\",\"connects\":%lu,\"queued\":%lu,"
              "\"replayed\":%lu,\"dropped\":%lu,\"waiting\":%u,\"uart_tx\":%lu,\"uart_rx\":%lu,\"uptime\":%lu,"
              "\"heap\":%lu",
              ap_up ? "true" : "false", http_auth_secret(settings.admin_pass, settings.token) ? "true" : "false",
-             settings.skip_gwsync ? "true" : "false", WiFi.isConnected() ? (int)WiFi.RSSI() : 0, states[relay.state],
+             settings.skip_gwsync ? "true" : "false", settings.stock_gw ? "stock" : "ows",
+             stock_gw_available() ? "true" : "false", WiFi.isConnected() ? (int)WiFi.RSSI() : 0, states[relay.state],
              (unsigned long)relay.connects, (unsigned long)buffer.queued_total, (unsigned long)buffer.replayed_total,
              (unsigned long)buffer.dropped_total, buffer.count, (unsigned long)bytes_to_contact,
              (unsigned long)bytes_from_contact, (unsigned long)(now / 1000), (unsigned long)ESP.getFreeHeap());

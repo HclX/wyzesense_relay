@@ -14,6 +14,8 @@
 #include "build_info.h"
 #include "sbl.h"
 
+#define GWSYNC_PAGE31_CODE_LEN 0xFA8u  // page 31 code area (0x1F000..0x1FFA7) carried by stock gateway images
+
 typedef struct {
     bool (*write)(void *ctx, const uint8_t *data, size_t len);
     // up to cap bytes: waits up to timeout_ms for the first, then returns what has come; 0 on timeout
@@ -53,6 +55,7 @@ typedef struct {
     build_info_t carried;  // the carried image's block
     char mac[9];           // the contact's CCFG MAC, if the bootloader or the debug port was entered
     bool via_cjtag;        // the reflash (or the check) went through the debug port
+    bool stock;            // true if the running gateway is stock Wyze firmware (needs 0x43 <-> 0x53 sync translation)
     uint32_t junk;         // bytes from the contact that were not the answer (a noisy or chattering line)
     char msg[160];         // for the status page
 } gwsync_report_t;

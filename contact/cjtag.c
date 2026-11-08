@@ -93,16 +93,17 @@ static bool page_crc(cjtag_t *c, uint32_t addr, uint32_t *out)
     return true;
 }
 
-// Flash at addr equals want (len bytes, a multiple of CHUNK)?
+// Flash at addr equals want (len bytes, a multiple of 4)?
 static bool flash_equals(cjtag_t *c, uint32_t addr, const uint8_t *want, size_t len, bool *equal)
 {
     uint8_t b[CHUNK];
     *equal = true;
     for (size_t off = 0; off < len; off += CHUNK) {
-        if (!cjtag_mem_read_block(c, addr + (uint32_t)off, b, CHUNK)) {
+        size_t n = len - off < CHUNK ? len - off : CHUNK;
+        if (!cjtag_mem_read_block(c, addr + (uint32_t)off, b, n)) {
             return false;
         }
-        if (memcmp(b, want + off, CHUNK) != 0) {
+        if (memcmp(b, want + off, n) != 0) {
             *equal = false;
             return true;
         }
@@ -960,12 +961,15 @@ int cjtag_write_image(cjtag_t *c, cjtag_image_fn image, void *ctx, uint32_t imag
         fail(c, "no factory MAC in its CCFG: not written");
         return -1;
     }
-    if (!image_len || image_len > CJTAG_APP_END) {
+    bool has_p31_code = image_len > CJTAG_PAGE31_CODE_LEN && (image_len - CJTAG_PAGE31_CODE_LEN) % CJTAG_PAGE == 0 &&
+                        (image_len - CJTAG_PAGE31_CODE_LEN) <= CJTAG_APP_END;
+    uint32_t app_len = has_p31_code ? image_len - CJTAG_PAGE31_CODE_LEN : image_len;
+    if (!app_len || app_len > CJTAG_APP_END) {
         fail(c, "image size out of range (pages 0-29 only)");
         return -1;
     }
-    for (uint32_t p = 0; p * CJTAG_PAGE < image_len; p++) {
-        uint32_t n = image_len - p * CJTAG_PAGE < CJTAG_PAGE ? image_len - p * CJTAG_PAGE : CJTAG_PAGE;
+    for (uint32_t p = 0; p * CJTAG_PAGE < app_len; p++) {
+        uint32_t n = app_len - p * CJTAG_PAGE < CJTAG_PAGE ? app_len - p * CJTAG_PAGE : CJTAG_PAGE;
         bool equal = false;
         memset(buf_4k, 0xFF, CJTAG_PAGE);
         if (!image(ctx, p * CJTAG_PAGE, buf_4k, n)) {
@@ -985,6 +989,20 @@ int cjtag_write_image(cjtag_t *c, cjtag_image_fn image, void *ctx, uint32_t imag
             return -1;
         }
         written++;
+    }
+    if (has_p31_code) {
+        // the page-31 code (a stock image's TI-RTOS part) through the one guarded writer: the unit's CCFG kept byte
+        // for byte, ccfg_safe, page 31 put back as it was if the write fails
+        static uint8_t orig[CJTAG_PAGE];
+        if (!image(ctx, app_len, buf_4k, CJTAG_PAGE31_CODE_LEN)) {
+            fail(c, "page 31 code: image read failed");
+            return -1;
+        }
+        int w = cjtag_write_page31_code(c, buf_4k, buf_4k, orig);
+        if (w < 0) {
+            return -1;
+        }
+        written += w;
     }
     return written;
 }
@@ -1210,7 +1228,7 @@ int cjtag_write_page31_code(cjtag_t *c, const uint8_t *code, uint8_t *buf_4k, ui
         return -1;
     }
     const uint8_t *ccfg = orig_4k + ccfg_off;
-    memcpy(buf_4k, code, ccfg_off);
+    memmove(buf_4k, code, ccfg_off);                         // code may be buf_4k itself
     memcpy(buf_4k + ccfg_off, ccfg, CJTAG_PAGE - ccfg_off);  // the unit's own CCFG, byte for byte
     if (!ccfg_safe(c, ccfg, buf_4k + ccfg_off, 0)) {
         return -1;

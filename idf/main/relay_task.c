@@ -71,6 +71,7 @@ static void task(void *arg)
     uint8_t buf[512];
     contact_gwsync();  // before anything is relayed: the contact on the carried gateway image (#76)
     const gwsync_report_t *rep = contact_gwsync_report();
+    buffer.translate_sync = (rep && rep->stock) || settings.stock_gw;
     if (rep && rep->msg[0]) {
         char gmsg[sizeof s_last_log];
         snprintf(gmsg, sizeof gmsg, "gateway: %.110s", rep->msg);

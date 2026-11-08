@@ -180,6 +180,7 @@ bootloader without reflashing the ESP.</p>
 <label>wyzesense2mqtt-rs bridge</label><input type=text name=url id=seturl placeholder=ws://host:8080/ws/bridge>
 <label>Bridge token</label><input type=password name=token autocomplete=new-password>
 <label>Admin password (protects setup &amp; updates)</label><input type=password name=admin_pass autocomplete=new-password placeholder="uses bridge token if unset">
+<label>Carried gateway firmware</label><select name=gw_fw id=setgwfw><option value=ows>OpenWyzeSense (custom gateway)</option><option value=stock id=optstock>Stock Wyze v1.8 (dongle gateway)</option></select>
 <label>Contact updates through</label><select name=contact_flash id=setcflash><option value=auto>Auto: debug port (M/C), else bootloader</option><option value=cjtag>Debug port (M/C) only</option><option value=sbl>Bootloader (R/T) only</option></select>
 <div id=rolewrap><label>Device role</label><select name=role id=setrole>
 <option value=0>Relay (its contact the gateway)</option>
@@ -292,7 +293,8 @@ $('rssi').textContent=s.ip?s.rssi+' dBm':'–';$('up').textContent=dur(s.uptime)
 $('heap').textContent=(s.heap/1024).toFixed(1)+' KB';$('auth').textContent=s.auth?'password set':'open (set in Setup)';
 $('build').textContent=s.build;renderSensors(s.sensors||[]);
 document.querySelectorAll('.chip').forEach(e=>e.textContent=s.chip);noteWires(s);drawWiring(s);$('fwhint').textContent=s.fw_file;
-if(!filled){filled=true;$('ssid').value=s.ssid;$('seturl').value=s.url;$('setrole').value=String(role);if(s.contact_flash)$('setcflash').value=s.contact_flash}
+if(s.stock_available===false){$('optstock').disabled=true;$('optstock').textContent='Stock Wyze v1.8 (not embedded in this build)'}
+if(!filled){filled=true;$('ssid').value=s.ssid;$('seturl').value=s.url;$('setrole').value=String(role);if(s.gw_fw)$('setgwfw').value=s.gw_fw;if(s.contact_flash)$('setcflash').value=s.contact_flash}
 }catch(e){pill('bad','relay not answering')}}
 setInterval(poll,2000);poll();
 function upload(url,field,file,prog,msg,btn,done){

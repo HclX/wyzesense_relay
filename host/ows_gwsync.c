@@ -158,7 +158,7 @@ int main(int argc, char **argv)
     if (gap) {
         quiet_ms = (int)strtol(gap, NULL, 10);
     }
-    static uint8_t buf[SBL_APP_END];
+    static uint8_t buf[SBL_APP_END + GWSYNC_PAGE31_CODE_LEN];
     if (!query) {
         FILE *f = fopen(path, "rb");
         image_len = f ? fread(buf, 1, sizeof buf, f) : 0;
@@ -202,7 +202,8 @@ int main(int argc, char **argv)
     static const char *names[] = {"same", "updated", "failed", "refused"};
     gwsync_result_t res =
         skip ? gwsync_probe(&io, (uint32_t)image_len, page, &r) : gwsync_run(&io, (uint32_t)image_len, &s, page, &r);
-    printf("result: %s\nanswered: %s\nmac: %s\njunk: %lu\nmessage: %s\n", names[res], r.answered ? "yes" : "no",
+    printf("result: %s\nanswered: %s\nstock: %s\ncarried: %s\nrunning: %s\nmac: %s\njunk: %lu\nmessage: %s\n",
+           names[res], r.answered ? "yes" : "no", r.stock ? "yes" : "no", r.carried.version, r.running.version,
            r.mac[0] ? r.mac : "-", (unsigned long)r.junk, r.msg);
     return res == GWSYNC_SAME || res == GWSYNC_UPDATED ? 0 : 1;
 }

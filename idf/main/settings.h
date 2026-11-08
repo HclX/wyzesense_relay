@@ -17,6 +17,7 @@ typedef struct {
         wire_t
             [16];  // the colours of the harness's R and T wires (the station's hand probes), as named      // HTTP admin password for mutating endpoints (falls back to token when empty)
     bool skip_gwsync;       // pause startup CC1310 auto-reflash (safe mode / custom radio builds)
+    bool stock_gw;          // carry/sync stock Wyze v1.8 gateway image instead of OWS gateway image
     bool rig;               // the battery rig (#95): OWS_PIN_RIG_SUPPLY supplies the contact (rig_task.c)
     uint8_t contact_flash;  // how gwsync reflashes the contact (#81): GWSYNC_VIA_AUTO / _CJTAG / _SBL
     uint8_t role;           // ROLE_RELAY or ROLE_STATION: mutually exclusive

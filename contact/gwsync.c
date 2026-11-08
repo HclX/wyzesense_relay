@@ -137,11 +137,36 @@ static bool query_page(const gwsync_io_t *io, uint8_t part, build_info_t *out, u
     return false;
 }
 
-static bool query_mac(const gwsync_io_t *io, char mac[9], uint32_t *junk)
+static bool parse_hex_mac(const uint8_t *payload, size_t len, char mac[9])
 {
+    if (len < 8) {
+        return false;
+    }
+    char tmp[9];
+    for (int k = 0; k < 8; k++) {
+        uint8_t c = payload[k];
+        if (c >= 'a' && c <= 'f') {
+            c = (uint8_t)(c - 'a' + 'A');
+        }
+        if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F'))) {
+            return false;
+        }
+        tmp[k] = (char)c;
+    }
+    tmp[8] = '\0';
+    if (memcmp(tmp, "00000000", 8) == 0) {
+        return false;
+    }
+    memcpy(mac, tmp, 9);
+    return true;
+}
+
+static bool query_mac_cmd(const gwsync_io_t *io, uint16_t ask_cmd, char mac[9], uint32_t *junk)
+{
+    uint16_t rsp_cmd = (uint16_t)(ask_cmd + 1);
     uint8_t ask[16], ack[16], buf[64];
-    size_t n_ask = host_build(ask, 0x4304, NULL, 0, false);
-    size_t n_ack = host_build_ack(ack, 0x4305, false);
+    size_t n_ask = host_build(ask, ask_cmd, NULL, 0, false);
+    size_t n_ack = host_build_ack(ack, rsp_cmd, false);
     host_rx_t rx;
     host_rx_init(&rx);
     io->flush_input(io->ctx);
@@ -157,34 +182,145 @@ static bool query_mac(const gwsync_io_t *io, char mac[9], uint32_t *junk)
         *junk += (uint32_t)n;
         for (size_t i = 0; i < n; i++) {
             host_pkt_t p;
-            if (!host_rx_feed(&rx, buf[i], &p) || !p.to_host || p.cmd != 0x4305) {
+            if (!host_rx_feed(&rx, buf[i], &p) || !p.to_host || p.cmd != rsp_cmd) {
                 continue;
             }
             io->write(io->ctx, ack, n_ack);
-            if (p.len < 8) {
+            if (!parse_hex_mac(p.payload, p.len, mac)) {
                 return false;
             }
-            char tmp[9];
-            for (int k = 0; k < 8; k++) {
-                uint8_t c = p.payload[k];
-                if (c >= 'a' && c <= 'f') {
-                    c = (uint8_t)(c - 'a' + 'A');
-                }
-                if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F'))) {
-                    return false;
-                }
-                tmp[k] = (char)c;
-            }
-            tmp[8] = '\0';
-            if (memcmp(tmp, "00000000", 8) == 0) {
-                return false;
-            }
-            memcpy(mac, tmp, 9);
             *junk -= (uint32_t)(n < p.len + 7 ? n : p.len + 7);
             return true;
         }
     }
     return false;
+}
+
+static bool query_mac(const gwsync_io_t *io, char mac[9], uint32_t *junk)
+{
+    return query_mac_cmd(io, 0x4304, mac, junk);
+}
+
+static bool query_stock_mac(const gwsync_io_t *io, char mac[9], uint32_t *junk)
+{
+    return query_mac_cmd(io, 0x5304, mac, junk);
+}
+
+static bool write_stock_mac(const gwsync_io_t *io, const char mac[9])
+{
+    if (!mac || strlen(mac) != 8) {
+        return false;
+    }
+    uint8_t ask[24], ack[16], buf[64];
+    size_t n_ask = host_build(ask, 0x5308, (const uint8_t *)mac, 8, false);
+    size_t n_ack = host_build_ack(ack, 0x5309, false);
+    host_rx_t rx;
+    host_rx_init(&rx);
+    io->flush_input(io->ctx);
+    if (!io->write(io->ctx, ask, n_ask)) {
+        return false;
+    }
+    for (size_t got = 0; got < BYTES_MAX;) {
+        size_t n = io->read(io->ctx, buf, sizeof buf, MAC_WAIT_MS);
+        if (!n) {
+            break;
+        }
+        got += n;
+        for (size_t i = 0; i < n; i++) {
+            host_pkt_t p;
+            if (!host_rx_feed(&rx, buf[i], &p) || !p.to_host || p.cmd != 0x5309) {
+                continue;
+            }
+            io->write(io->ctx, ack, n_ack);
+            return true;
+        }
+    }
+    return false;
+}
+
+// Stock gateway firmware (no OWS_SUB_BUILD_INFO): answers 0x5316 (HOST_GET_VERSION) with 0x5317 ("0.0.0.47 V1.8 Gateway GW3U")
+static bool query_stock(const gwsync_io_t *io, build_info_t *out, uint32_t *junk, int tries)
+{
+    uint8_t ask[16], ack[16], buf[64];
+    size_t n_ask = host_build(ask, HOST_GET_VERSION, NULL, 0, false);
+    size_t n_ack = host_build_ack(ack, HOST_GET_VERSION + 1, false);
+    for (int t = 0; t < tries; t++) {
+        host_rx_t rx;
+        host_rx_init(&rx);
+        io->flush_input(io->ctx);
+        if (!io->write(io->ctx, ask, n_ask)) {
+            return false;
+        }
+        for (size_t w = 0, got = 0; w < WAITS && got < BYTES_MAX;) {
+            size_t n = io->read(io->ctx, buf, sizeof buf, WAIT_MS);
+            if (!n) {
+                w++;
+                continue;
+            }
+            got += n;
+            *junk += (uint32_t)n;
+            for (size_t i = 0; i < n; i++) {
+                host_pkt_t p;
+                if (!host_rx_feed(&rx, buf[i], &p) || !p.to_host || p.cmd != HOST_GET_VERSION + 1 || p.len < 1) {
+                    continue;
+                }
+                io->write(io->ctx, ack, n_ack);
+                memset(out, 0, sizeof *out);
+                out->magic = BUILD_INFO_MAGIC;
+                out->format = BUILD_INFO_FORMAT;
+                snprintf(out->product, sizeof out->product, "gateway-stock");
+                snprintf(out->board, sizeof out->board, "Wyze Sense v1 contact");
+                snprintf(out->app, sizeof out->app, "gateway");
+                size_t vlen = p.len < sizeof out->version - 1 ? p.len : sizeof out->version - 1;
+                for (size_t k = 0; k < vlen && p.payload[k] >= 0x20 && p.payload[k] < 0x7F; k++) {
+                    out->version[k] = (char)p.payload[k];
+                }
+                *junk -= (uint32_t)(n < p.len + 7 ? n : p.len + 7);
+                return out->version[0] != '\0';
+            }
+        }
+    }
+    return false;
+}
+
+static bool is_stock_image(const gwsync_io_t *io, uint32_t image_len, uint8_t *page, build_info_t *out)
+{
+    if (image_len <= GWSYNC_PAGE31_CODE_LEN) {
+        return false;
+    }
+    uint32_t app_len = image_len - GWSYNC_PAGE31_CODE_LEN;
+    if (app_len % SBL_PAGE != 0 || app_len > SBL_APP_END) {
+        return false;
+    }
+    uint32_t sp = page[0] | (uint32_t)page[1] << 8 | (uint32_t)page[2] << 16 | (uint32_t)page[3] << 24;
+    uint32_t reset = page[4] | (uint32_t)page[5] << 8 | (uint32_t)page[6] << 16 | (uint32_t)page[7] << 24;
+    if (!(sp > 0x20000000u && sp <= 0x20005000u && (reset & 1) && reset < SBL_APP_END)) {
+        return false;
+    }
+    uint32_t c_app = 0xFFFFFFFFu;
+    for (uint32_t off = 0; off < app_len; off += SBL_PAGE) {
+        if (!io->image(io->ctx, off, page, SBL_PAGE)) {
+            return false;
+        }
+        c_app = sbl_crc32_update(c_app, page, SBL_PAGE);
+    }
+    if (!io->image(io->ctx, app_len, page, GWSYNC_PAGE31_CODE_LEN)) {
+        return false;
+    }
+    uint32_t c_p31 = ~sbl_crc32_update(0xFFFFFFFFu, page, GWSYNC_PAGE31_CODE_LEN);
+    c_app = ~c_app;
+    memset(out, 0, sizeof *out);
+    out->magic = BUILD_INFO_MAGIC;
+    out->format = BUILD_INFO_FORMAT;
+    for (int i = 0; i < 4; i++) {
+        out->id[i] = (uint8_t)(c_app >> (24 - 8 * i));
+        out->id[4 + i] = (uint8_t)(c_p31 >> (24 - 8 * i));
+    }
+    snprintf(out->product, sizeof out->product, "gateway-stock");
+    snprintf(out->board, sizeof out->board, "Wyze Sense v1 contact");
+    snprintf(out->app, sizeof out->app, "gateway");
+    snprintf(out->version, sizeof out->version, "0.0.0.47 V1.8 Gateway GW3U");
+    return true;
 }
 
 bool gwsync_query(const gwsync_io_t *io, build_info_t *out)
@@ -293,23 +429,38 @@ static bool flash(const gwsync_io_t *io, uint32_t len, sbl_t *sbl, uint8_t *page
     return sbl_stream_end(sbl);
 }
 
-static gwsync_result_t check_new(const gwsync_io_t *io, gwsync_report_t *r, const char *want);
+static gwsync_result_t check_new(const gwsync_io_t *io, gwsync_report_t *r, const char *want, bool carried_stock);
 
 gwsync_result_t gwsync_run(const gwsync_io_t *io, uint32_t image_len, sbl_t *sbl, uint8_t *page, gwsync_report_t *r)
 {
     char want[17];
     memset(r, 0, sizeof *r);
     size_t head = image_len < SEARCH ? image_len : SEARCH;
-    if (!image_len || image_len % 4 || image_len > SBL_APP_END || !io->image(io->ctx, 0, page, head) ||
-        !gwsync_find_info(page, head, &r->carried) || strcmp(r->carried.app, "gateway") != 0) {
+    bool carried_ows = image_len > 0 && image_len % 4 == 0 && image_len <= SBL_APP_END &&
+                       io->image(io->ctx, 0, page, head) && gwsync_find_info(page, head, &r->carried) &&
+                       strcmp(r->carried.app, "gateway") == 0;
+    bool carried_stock = !carried_ows && image_len >= 8 && io->image(io->ctx, 0, page, 8) &&
+                         is_stock_image(io, image_len, page, &r->carried);
+    if (!carried_ows && !carried_stock) {
         snprintf(r->msg, sizeof r->msg, "the carried image is not a gateway image with a build info block");
         return done(io, r, GWSYNC_REFUSED, false);
     }
+    uint32_t app_len = carried_stock ? image_len - GWSYNC_PAGE31_CODE_LEN : image_len;
     id_hex(want, r->carried.id);
     io->reset(io->ctx);
     io->sleep_ms(io->ctx, BOOT_MS);
-    r->answered = query_page(io, 0, &r->running, &r->junk, TRIES);
-    if (r->answered && !memcmp(r->running.id, r->carried.id, sizeof r->carried.id)) {
+    r->answered = query_page(io, 0, &r->running, &r->junk, carried_stock ? 1 : TRIES);
+    if (!r->answered && carried_stock && query_stock(io, &r->running, &r->junk, TRIES)) {
+        r->answered = true;
+        r->stock = true;
+        memcpy(r->running.id, r->carried.id, sizeof r->running.id);
+    }
+    if (r->answered && (carried_stock ? r->stock : !memcmp(r->running.id, r->carried.id, sizeof r->carried.id))) {
+        if (carried_stock) {
+            query_stock_mac(io, r->mac, &r->junk);
+            snprintf(r->msg, sizeof r->msg, "runs the carried stock gateway %s (%s)", r->running.version, want);
+            return done(io, r, GWSYNC_SAME, false);
+        }
         // the same code (the image ID leaves the version string out): nothing to flash. What it reports is its own
         // build's version (pages 1-2), which can differ from the carried one's (#55): the carried one's if it does not say
         if (query_page(io, 1, &r->running, &r->junk, 1)) {
@@ -337,13 +488,14 @@ gwsync_result_t gwsync_run(const gwsync_io_t *io, uint32_t image_len, sbl_t *sbl
         int written = io->cjtag_flash(io->ctx, image_len, r->mac, err, sizeof err);
         if (written == 0) {
             r->via_cjtag = true;
+            r->stock = carried_stock;
             snprintf(r->msg, sizeof r->msg, "the carried gateway %s (%s) is there (cJTAG), but it did not answer",
                      r->carried.version, want);
             return done(io, r, GWSYNC_SAME, false);
         }
         if (written > 0) {
             r->via_cjtag = true;
-            return check_new(io, r, want);
+            return check_new(io, r, want, carried_stock);
         }
         step(io, "debug port: %s", err);
         if (io->transport == GWSYNC_VIA_CJTAG) {
@@ -355,15 +507,21 @@ gwsync_result_t gwsync_run(const gwsync_io_t *io, uint32_t image_len, sbl_t *sbl
         return done(io, r, GWSYNC_REFUSED, false);
     }
 
+    if (carried_stock) {
+        // the bootloader writes pages 0-29 only: the stock image's page-31 code would be left out, and the stock
+        // gateway does not start without it. Only the debug port (cJTAG, M/C wired) writes it, under the CCFG rule
+        snprintf(r->msg, sizeof r->msg, "not flashed: the stock gateway needs the debug port (page 31)");
+        return done(io, r, GWSYNC_FAILED, false);
+    }
     sbl_io_t sio = {io->write, io->read, io->flush_input, io->ctx};
     sbl_init(sbl, &sio);
     bool connected = false;
     if (r->answered) {
-        if (query_page(io, 1, &r->running, &r->junk, 1) && !query_page(io, 2, &r->running, &r->junk, 1)) {
+        if (!r->stock && query_page(io, 1, &r->running, &r->junk, 1) && !query_page(io, 2, &r->running, &r->junk, 1)) {
             r->running.version[22] = '\0';
         }
         step(io, "it runs %s: into its bootloader", r->running.version[0] ? r->running.version : r->running.product);
-        if (enter_soft_sbl(io)) {
+        if (!r->stock && enter_soft_sbl(io)) {
             connected = sbl_connect(sbl, NULL);
         }
     } else {
@@ -385,26 +543,45 @@ gwsync_result_t gwsync_run(const gwsync_io_t *io, uint32_t image_len, sbl_t *sbl
     if (!r->answered) {
         step(io, "comparing its flash with the carried image (CRC)");
     }
-    if (!r->answered && same_by_crc(io, image_len, sbl, page, &same) && same) {
+    if (!r->answered && same_by_crc(io, app_len, sbl, page, &same) && same) {
+        r->stock = carried_stock;
         snprintf(r->msg, sizeof r->msg, "the carried gateway %s (%s) is there (CRC), but it did not answer",
                  r->carried.version, want);
         return done(io, r, GWSYNC_SAME, true);
     }
-    if (!flash(io, image_len, sbl, page)) {
+    if (!flash(io, app_len, sbl, page)) {
         snprintf(r->msg, sizeof r->msg, "not flashed: %s", sbl->error);
         return done(io, r, GWSYNC_FAILED, true);
     }
     io->reset(io->ctx);
-    return check_new(io, r, want);
+    return check_new(io, r, want, carried_stock);
 }
 
 // After a reflash (and a reset into it): the new gateway must answer with the carried image's ID
-static gwsync_result_t check_new(const gwsync_io_t *io, gwsync_report_t *r, const char *want)
+static gwsync_result_t check_new(const gwsync_io_t *io, gwsync_report_t *r, const char *want, bool carried_stock)
 {
     char have[17];
     io->sleep_ms(io->ctx, BOOT_MS);
     step(io, "written: asking the new gateway");
     uint32_t junk = 0;
+    if (carried_stock) {
+        if (!query_stock(io, &r->running, &junk, TRIES)) {
+            snprintf(r->msg, sizeof r->msg, "flashed, but the stock gateway did not answer");
+            return done(io, r, GWSYNC_FAILED, false);
+        }
+        r->stock = true;
+        memcpy(r->running.id, r->carried.id, sizeof r->running.id);
+        char nv_mac[9] = "";
+        query_stock_mac(io, nv_mac, &junk);
+        if (r->mac[0] != '\0' && strcmp(nv_mac, r->mac) != 0) {
+            write_stock_mac(io, r->mac);
+        } else if (r->mac[0] == '\0' && nv_mac[0] != '\0') {
+            memcpy(r->mac, nv_mac, sizeof r->mac);
+        }
+        snprintf(r->msg, sizeof r->msg, "updated to the carried stock gateway %s (%s)%s", r->running.version, want,
+                 r->via_cjtag ? " through the debug port" : "");
+        return done(io, r, GWSYNC_UPDATED, false);
+    }
     bool answered = query_page(io, 0, &r->running, &junk, TRIES);
     if (!answered || memcmp(r->running.id, r->carried.id, sizeof r->carried.id) != 0) {
         id_hex(have, r->running.id);
@@ -429,6 +606,8 @@ gwsync_result_t gwsync_probe(const gwsync_io_t *io, uint32_t image_len, uint8_t 
         if (io->image(io->ctx, 0, page, head)) {
             gwsync_find_info(page, head, &r->carried);
         }
+    } else if (image_len > GWSYNC_PAGE31_CODE_LEN && io->image(io->ctx, 0, page, 8)) {
+        is_stock_image(io, image_len, page, &r->carried);
     }
     step(io, "auto-sync paused: probing running gateway");
     io->reset(io->ctx);
@@ -443,6 +622,11 @@ gwsync_result_t gwsync_probe(const gwsync_io_t *io, uint32_t image_len, uint8_t 
         id_hex(have, r->running.id);
         snprintf(r->msg, sizeof r->msg, "auto-sync paused; runs %s (%s)",
                  r->running.version[0] ? r->running.version : r->running.product, have);
+    } else if (query_stock(io, &r->running, &r->junk, TRIES)) {
+        r->answered = true;
+        r->stock = true;
+        query_stock_mac(io, r->mac, &r->junk);
+        snprintf(r->msg, sizeof r->msg, "auto-sync paused; runs stock %s", r->running.version);
     } else {
         snprintf(r->msg, sizeof r->msg, "auto-sync paused; no answer (%lu other bytes)", (unsigned long)r->junk);
     }

@@ -1,26 +1,11 @@
-idf_component_register(
-    SRCS
-        "../../relay/relay.c"
-        "../../relay/ws_frame.c"
-        "../../relay/ws_handshake.c"
-        "../../relay/sha1.c"
-        "../../relay/base64.c"
-        "../../relay/ring.c"
-        "../../contact/sbl.c"
-        "../../contact/cjtag.c"
-        "../../contact/gwsync.c"
-        "../../contact/gwnv.c"
-        "../../web/buffer.c"
-        "../../web/multipart.c"
-        "../../web/http_auth.c"
-        "../../web/mdns.c"
-        "../../rig/rig.c"
-        "../../common/host_proto.c"
-    INCLUDE_DIRS
-        "../../relay"
-        "../../contact"
-        "../../web"
-        "../../rig"
-        "../../common"
-)
+# The portable cores shared with the PC builds (CMakeLists.txt): the relay, its socket link, the outage buffer
+# with the gateway's host-protocol code, the contact's bootloader, the web uploads' multipart parser.
+idf_component_register(SRCS "../../../relay/relay.c" "../../../relay/sock_posix.c" "../../../relay/buffer.c"
+                            "../../../common/host_proto.c" "../../../contact/sbl.c"
+                            "../../../contact/sblprobe.c" "../../../contact/gwsync.c" "../../../contact/gwnv.c"
+                            "../../../contact/cjtag.c" "../../../web/multipart.c" "../../../web/http_auth.c"
+                            "../../../web/mdns_pkt.c" "../../../rig/rig.c"
+                       INCLUDE_DIRS "../../../relay" "../../../contact" "../../../web" "../../../rig"
+                                    "../../../common"
+                       REQUIRES lwip)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wall -Wextra -Werror)
