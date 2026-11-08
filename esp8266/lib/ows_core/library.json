@@ -1,34 +1,8 @@
 {
   "name": "ows_core",
-  "version": "0.1.0",
+  "description": "The relay core, the outage buffer, the gateway's host protocol and the contact's bootloader client, shared with the ESP32 and PC builds",
   "build": {
     "srcDir": "../../..",
-    "includeDir": "../../..",
-    "flags": [
-      "-Irelay",
-      "-Icontact",
-      "-Iweb",
-      "-Irig",
-      "-Icommon"
-    ],
-    "srcFilter": [
-      "-<*>",
-      "+<relay/relay.c>",
-      "+<relay/ws_frame.c>",
-      "+<relay/ws_handshake.c>",
-      "+<relay/sha1.c>",
-      "+<relay/base64.c>",
-      "+<relay/ring.c>",
-      "+<contact/sbl.c>",
-      "+<contact/cjtag.c>",
-      "+<contact/gwsync.c>",
-      "+<contact/gwnv.c>",
-      "+<web/buffer.c>",
-      "+<web/multipart.c>",
-      "+<web/http_auth.c>",
-      "+<web/mdns.c>",
-      "+<rig/rig.c>",
-      "+<common/host_proto.c>"
-    ]
+    "srcFilter": ["-<*>", "+<relay/relay.c>", "+<relay/buffer.c>", "+<common/host_proto.c>", "+<contact/sbl.c>", "+<contact/gwsync.c>", "+<contact/cjtag.c>", "+<contact/gwnv.c>", "+<web/http_auth.c>"]
   }
 }
