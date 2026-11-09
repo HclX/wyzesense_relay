@@ -487,6 +487,9 @@ static int cjtag_flash_now(uint32_t image_len, char *mac, char *err, size_t cap)
     written = cjtag_write_image(&cj, gw_image, NULL, image_len, want);
     if (written < 0) {
         snprintf(err, cap, "%s", cj.error);
+    } else if (written > 0) {
+        ESP_LOGI("contact", "debug port: pages written: %s", cj.written_pages);
+        snprintf(err, cap, "pages %s", cj.written_pages);  // the caller logs it (gwsync step)
     }
     cjtag_release_and_reset(&cj);
 out:

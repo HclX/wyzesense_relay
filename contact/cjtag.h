@@ -46,13 +46,14 @@ typedef struct {
     uint32_t ap_csw;     // cached AHB-AP CSW register
     uint32_t icepick_id;
     uint32_t dap_id;
-    uint32_t user_id;     // FCFG1 USER_ID (0x50001294)
-    uint64_t ieee_mac;    // FCFG1 64-bit IEEE 802.15.4 MAC (0x500012F0)
-    char mac[9];          // 8-char uppercase hex sensor MAC + NUL
-    bool has_ccfg_mac;    // true if page 31 CCFG + 0x24 holds a valid 8-char ASCII hex MAC
-    uint32_t bl_config;   // CCFG BL_CONFIG word at 0x0001FFD8
-    uint32_t page31_crc;  // IEEE CRC32 of page 31 read at connect time
-    char error[96];       // human-readable reason for the last error
+    uint32_t user_id;        // FCFG1 USER_ID (0x50001294)
+    uint64_t ieee_mac;       // FCFG1 64-bit IEEE 802.15.4 MAC (0x500012F0)
+    char mac[9];             // 8-char uppercase hex sensor MAC + NUL
+    bool has_ccfg_mac;       // true if page 31 CCFG + 0x24 holds a valid 8-char ASCII hex MAC
+    uint32_t bl_config;      // CCFG BL_CONFIG word at 0x0001FFD8
+    uint32_t page31_crc;     // IEEE CRC32 of page 31 read at connect time
+    char written_pages[96];  // the pages cjtag_write_image wrote, e.g. "0 1 23 31"
+    char error[96];          // human-readable reason for the last error
 } cjtag_t;
 
 void cjtag_init(cjtag_t *c, const cjtag_io_t *io);

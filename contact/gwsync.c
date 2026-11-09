@@ -506,6 +506,9 @@ gwsync_result_t gwsync_run(const gwsync_io_t *io, uint32_t image_len, sbl_t *sbl
         }
         if (written > 0) {
             r->via_cjtag = true;
+            if (err[0]) {
+                step(io, "debug port wrote %s", err);
+            }
             return check_new(io, r, want, carried_stock);
         }
         step(io, "debug port: %s", err);
@@ -576,7 +579,8 @@ static gwsync_result_t check_new(const gwsync_io_t *io, gwsync_report_t *r, cons
     step(io, "written: asking the new gateway");
     uint32_t junk = 0;
     if (carried_stock) {
-        io->sleep_ms(io->ctx, STOCK_BOOT_MS - BOOT_MS);
+        io->reset(io->ctx);  // a start of its own, as a plain restart gives it (the one after the debug port may not)
+        io->sleep_ms(io->ctx, STOCK_BOOT_MS);
         if (!query_stock(io, &r->running, &junk, TRIES)) {
             snprintf(r->msg, sizeof r->msg, "flashed, but the stock gateway did not answer");
             return done(io, r, GWSYNC_FAILED, false);

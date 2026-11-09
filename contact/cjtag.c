@@ -957,6 +957,7 @@ bool cjtag_flash_page(cjtag_t *c, uint32_t page_idx, const uint8_t *data_4k, boo
 int cjtag_write_image(cjtag_t *c, cjtag_image_fn image, void *ctx, uint32_t image_len, uint8_t *buf_4k)
 {
     int written = 0;
+    c->written_pages[0] = 0;
     if (!c->has_ccfg_mac) {
         fail(c, "no factory MAC in its CCFG: not written");
         return -1;
@@ -982,6 +983,11 @@ int cjtag_write_image(cjtag_t *c, cjtag_image_fn image, void *ctx, uint32_t imag
         if (equal) {
             continue;  // already there
         }
+        // the pages written, for the caller's log ("3 5-7"): c->error holds them when the write succeeds
+        size_t el = strlen(c->written_pages);
+        if (el + 6 < sizeof c->written_pages) {
+            snprintf(c->written_pages + el, sizeof c->written_pages - el, "%s%lu", el ? " " : "", (unsigned long)p);
+        }
         if (!cjtag_flash_page(c, p, buf_4k, false)) {
             char why[sizeof c->error];
             snprintf(why, sizeof why, "%s", c->error);
@@ -1001,6 +1007,10 @@ int cjtag_write_image(cjtag_t *c, cjtag_image_fn image, void *ctx, uint32_t imag
         int w = cjtag_write_page31_code(c, buf_4k, buf_4k, orig);
         if (w < 0) {
             return -1;
+        }
+        size_t el = strlen(c->written_pages);
+        if (w > 0 && el + 4 < sizeof c->written_pages) {
+            snprintf(c->written_pages + el, sizeof c->written_pages - el, "%s31", el ? " " : "");
         }
         written += w;
     }
