@@ -3,6 +3,6 @@
   "description": "The relay core, the outage buffer, the gateway's host protocol and the contact's bootloader client, shared with the ESP32 and PC builds",
   "build": {
     "srcDir": "../../..",
-    "srcFilter": ["-<*>", "+<relay/relay.c>", "+<relay/buffer.c>", "+<common/host_proto.c>", "+<contact/sbl.c>", "+<contact/gwsync.c>", "+<contact/cjtag.c>", "+<contact/gwnv.c>", "+<web/http_auth.c>"]
+    "srcFilter": ["-<*>", "+<relay/relay.c>", "+<relay/buffer.c>", "+<common/host_proto.c>", "+<contact/sbl.c>", "+<contact/gwsync.c>", "+<contact/cjtag.c>", "+<contact/gwnv.c>", "+<contact/stock_image.c>", "+<web/http_auth.c>"]
   }
 }

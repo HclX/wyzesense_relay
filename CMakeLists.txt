@@ -23,10 +23,17 @@ target_link_options(test_relay PRIVATE -fsanitize=address,undefined)
 add_test(NAME relay COMMAND test_relay)
 
 # the contact's ROM bootloader, cJTAG probe, and runtime NV client (contact/): ows-sbl runs it on a PC (tests/test_ows_sbl.py)
-add_library(ows_contact STATIC contact/sbl.c contact/sblprobe.c contact/gwsync.c contact/gwnv.c contact/cjtag.c)
+add_library(ows_contact STATIC contact/sbl.c contact/sblprobe.c contact/gwsync.c contact/gwnv.c contact/cjtag.c
+                               contact/stock_image.c)
 target_include_directories(ows_contact PUBLIC contact common)
 target_link_libraries(ows_contact PUBLIC ows_relay)  # host_proto.c
 target_compile_options(ows_contact PRIVATE -Wall -Wextra -Werror)
+
+add_executable(test_stock_image host/test_stock_image.c)
+target_link_libraries(test_stock_image PRIVATE ows_contact)
+target_compile_options(test_stock_image PRIVATE -Wall -Wextra -Werror -fsanitize=address,undefined)
+target_link_options(test_stock_image PRIVATE -fsanitize=address,undefined)
+add_test(NAME stock_image COMMAND test_stock_image)
 
 add_executable(test_cjtag host/test_cjtag.c)
 target_link_libraries(test_cjtag PRIVATE ows_contact)

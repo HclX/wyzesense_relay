@@ -23,6 +23,10 @@ extern "C" {
 #include "http_auth.h"
 #include "relay.h"
 #include "sbl.h"
+#include "stock_image.h"
+
+extern uint32_t _FS_start;
+extern uint32_t _FS_end;
 }
 
 namespace
@@ -723,16 +727,50 @@ void gw_progress(void *, const char *step)
     gw_nsteps++;
 }
 
+constexpr uint32_t kStockStageOffset = 0x20000u;  // staging region after the 128 KB stock partition in _FS_start
+bool stock_probed = false;
+bool stock_valid = false;
+bool stock_started = false;
+bool stock_ok = false;
+uint32_t stock_erased_up_to = 0;
+stock_pack_t stock_pack;
+char stock_msg[160];
+
+uint32_t stock_part_addr()
+{
+    return (uint32_t)((uintptr_t)&_FS_start - 0x40200000u);
+}
+
+uint32_t stock_part_cap()
+{
+    uintptr_t s = (uintptr_t)&_FS_start, e = (uintptr_t)&_FS_end;
+    return e > s ? (uint32_t)(e - s) : 0;
+}
+
+bool stock_part_read(void *, uint32_t off, uint8_t *buf, size_t len)
+{
+    yield();
+    return ESP.flashRead(stock_part_addr() + off, buf, len);
+}
+
 bool stock_gw_available()
 {
-    return kStockGatewayImageLen > GWSYNC_PAGE31_CODE_LEN;
+    if (!stock_probed) {
+        uint8_t buf[256];
+        char err[96];
+        stock_probed = true;
+        stock_valid =
+            stock_part_cap() >= STOCK_PART_LEN &&
+            stock_verify_partition(stock_part_read, nullptr, k_stock_image_sha256, buf, sizeof buf, err, sizeof err);
+    }
+    return stock_valid;
 }
 
 const uint8_t *active_gw_image(uint32_t *len_out)
 {
     if (settings.stock_gw && stock_gw_available()) {
-        *len_out = kStockGatewayImageLen;
-        return kStockGatewayImage;
+        *len_out = STOCK_IMAGE_LEN;
+        return nullptr;  // stored in the _FS_start flash region, read via ESP.flashRead in gw_image()
     }
     *len_out = kGatewayImageLen;
     return kGatewayImage;
@@ -745,8 +783,144 @@ bool gw_image(void *, uint32_t off, uint8_t *buf, size_t len)
     if (off + len > img_len) {
         return false;
     }
+    if (!img) {
+        yield();
+        return ESP.flashRead(stock_part_addr() + STOCK_HDR_LEN + off, buf, len);
+    }
     memcpy_P(buf, img + off, len);
     return true;
+}
+
+bool stock_stage_write(void *, uint32_t off, const uint8_t *data, size_t len)
+{
+    if (off >= STOCK_APP_LEN) {
+        return off == STOCK_APP_LEN && len == STOCK_PAGE31_CODE_LEN;
+    }
+    if (off + len > STOCK_APP_LEN) {
+        return false;
+    }
+    uint32_t stage = stock_part_addr() + kStockStageOffset;
+    while (stock_erased_up_to < off + len) {
+        yield();
+        if (!ESP.flashEraseSector((stage + stock_erased_up_to) >> 12)) {
+            return false;
+        }
+        stock_erased_up_to += SBL_PAGE;
+    }
+    yield();
+    return ESP.flashWrite(stage + off, data, len);
+}
+
+bool stock_commit(const uint8_t hdr[STOCK_HDR_LEN])
+{
+    uint32_t base = stock_part_addr();
+    uint32_t stage = base + kStockStageOffset;
+    for (uint32_t off = 0; off < STOCK_PART_LEN; off += SBL_PAGE) {
+        yield();
+        if (!ESP.flashEraseSector((base + off) >> 12)) {
+            snprintf(stock_msg, sizeof stock_msg, "erasing stock flash area failed");
+            return false;
+        }
+    }
+    yield();
+    // Write the 48-byte header and the 0xFA8-byte page-31 code (currently in sbl_page) before reusing sbl_page to
+    // copy pages 0-29 from the staging area.
+    if (!ESP.flashWrite(base, hdr, STOCK_HDR_LEN) ||
+        !ESP.flashWrite(base + STOCK_HDR_LEN + STOCK_APP_LEN, sbl_page, STOCK_PAGE31_CODE_LEN)) {
+        snprintf(stock_msg, sizeof stock_msg, "writing stock flash header or page 31 code failed");
+        return false;
+    }
+    for (uint32_t off = 0; off < STOCK_APP_LEN; off += SBL_PAGE) {
+        yield();
+        if (!ESP.flashRead(stage + off, sbl_page, SBL_PAGE) ||
+            !ESP.flashWrite(base + STOCK_HDR_LEN + off, sbl_page, SBL_PAGE)) {
+            snprintf(stock_msg, sizeof stock_msg, "writing stock flash page %lu failed",
+                     (unsigned long)(off / SBL_PAGE));
+            return false;
+        }
+    }
+    stock_probed = true;
+    stock_valid = stock_verify_partition(stock_part_read, nullptr, k_stock_image_sha256, sbl_page, sizeof sbl_page,
+                                         stock_msg, sizeof stock_msg);
+    if (stock_valid) {
+        snprintf(stock_msg, sizeof stock_msg,
+                 "stock v1.8 gateway image stored and verified (%u bytes, SHA-256 %.16s...)", (unsigned)STOCK_IMAGE_LEN,
+                 STOCK_IMAGE_SHA256_HEX);
+    }
+    return stock_valid;
+}
+
+void contact_stock_upload()
+{
+    HTTPUpload &u = server.upload();
+    if (u.status == UPLOAD_FILE_START) {
+        stock_started = false;
+        stock_ok = false;
+        upload_unauth = !auth_ok();
+        upload_refused = !upload_unauth && gw_busy;
+        if (upload_unauth || upload_refused) {
+            return;
+        }
+        stock_started = true;
+        if (stock_part_cap() < kStockStageOffset + STOCK_APP_LEN) {
+            snprintf(stock_msg, sizeof stock_msg, "flash filesystem area too small for stock image");
+            return;
+        }
+        stock_erased_up_to = 0;
+        stock_pack_init(&stock_pack, sbl_page, stock_stage_write, nullptr);
+        stock_ok = true;
+        return;
+    }
+    if (upload_unauth || upload_refused || !stock_started) {
+        if (u.status == UPLOAD_FILE_ABORTED) {
+            upload_unauth = false;
+            upload_refused = false;
+        }
+        return;
+    }
+    if (u.status == UPLOAD_FILE_WRITE) {
+        if (stock_ok && !stock_pack_feed(&stock_pack, u.buf, u.currentSize)) {
+            stock_ok = false;
+        }
+    } else if (u.status == UPLOAD_FILE_END) {
+        uint8_t hdr[STOCK_HDR_LEN];
+        if (!stock_pack_finish(&stock_pack, k_stock_image_sha256, hdr, nullptr, stock_msg, sizeof stock_msg)) {
+            stock_ok = false;
+            return;
+        }
+        stock_ok = stock_commit(hdr);
+    } else if (u.status == UPLOAD_FILE_ABORTED) {
+        stock_started = false;
+        stock_ok = false;
+        upload_unauth = false;
+        upload_refused = false;
+        snprintf(stock_msg, sizeof stock_msg, "stock image upload broke off");
+    }
+}
+
+void contact_stock_done()
+{
+    bool started = stock_started;
+    bool unauth = upload_unauth;
+    bool refused = upload_refused;
+    bool ok = stock_ok;
+    stock_started = false;
+    stock_ok = false;
+    upload_unauth = false;
+    upload_refused = false;
+    if (unauth || !auth_ok()) {
+        send_unauth();
+        return;
+    }
+    if (refused || (!started && gw_busy)) {
+        server.send(503, "text/plain", "the start-up gateway check is running: try again in a moment");
+        return;
+    }
+    if (!started) {
+        server.send(400, "text/plain", "missing stock image upload\n");
+        return;
+    }
+    server.send(ok ? 200 : 400, "text/plain", String(stock_msg) + "\n");
 }
 
 // --- the contact's debug port (2-pin cJTAG on M and C, esp32/contact/cjtag.c, #81) ---
@@ -999,7 +1173,7 @@ void api_status()
         ",\"url\":" + js(settings.url);
     b += ",\"ip\":" + js(WiFi.isConnected() ? WiFi.localIP().toString().c_str() : "");
     snprintf(n, sizeof n,
-             ",\"ap\":%s,\"auth\":%s,\"skip_gwsync\":%s,\"gw_fw\":\"%s\",\"stock_available\":%s,\"rssi\":%d,\"relay\":"
+             ",\"ap\":%s,\"auth\":%s,\"skip_gwsync\":%s,\"gw_fw\":\"%s\",\"stock_stored\":%s,\"rssi\":%d,\"relay\":"
              "\"%s\",\"connects\":%lu,\"queued\":%lu,"
              "\"replayed\":%lu,\"dropped\":%lu,\"waiting\":%u,\"uart_tx\":%lu,\"uart_rx\":%lu,\"uptime\":%lu,"
              "\"heap\":%lu",
@@ -1141,6 +1315,7 @@ void setup()
     server.on("/contact/gwsync", HTTP_POST, contact_gwsync_post);
     server.on("/ota", HTTP_POST, ota_done, ota_upload);
     server.on("/contact/flash", HTTP_POST, contact_flash_done, contact_flash_upload);
+    server.on("/contact/stock", HTTP_POST, contact_stock_done, contact_stock_upload);
     server.on("/contact/nv", HTTP_GET, contact_nv_get);
     server.on("/contact/nv", HTTP_POST, contact_nv_post, contact_nv_upload);
 #ifdef OWS_DEBUG_UART

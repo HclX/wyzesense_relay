@@ -15,3 +15,5 @@ esp8266/include/generated_*.h
 /backups/
 /firmware/gateway-stock*.bin
 /firmware/*FLASH*.bin
+/firmware/gwstock*.bin
+/gwstock*.bin

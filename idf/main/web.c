@@ -21,6 +21,7 @@
 #include "relay_task.h"
 #include "rig_task.h"
 #include "settings.h"
+#include "stock_image.h"
 #include "pins.h"
 
 #define MAX_CONTACT_IMAGE 0x1E000  // pages 0-29
@@ -129,7 +130,7 @@ static esp_err_t api_status(httpd_req_t *req)
     int len = snprintf(
         body, 6144,
         "{\"name\":%s,\"mdns\":%s,\"ssid\":%s,\"url\":%s,\"ip\":%s,\"ap\":%s,\"auth\":%s,"
-        "\"role\":%u,\"skip_gwsync\":%s,\"gw_fw\":\"%s\",\"stock_available\":%s,\"contact_flash\":\"%s\",\"rssi\":%d,"
+        "\"role\":%u,\"skip_gwsync\":%s,\"gw_fw\":\"%s\",\"stock_stored\":%s,\"contact_flash\":\"%s\",\"rssi\":%d,"
         "\"relay\":\"%s\",\"connects\":%"
         "lu,\"queued\":%lu,"
         "\"replayed\":%lu,\"dropped\":%lu,\"waiting\":%u,\"uart_tx\":%lu,\"uart_rx\":%lu,"
@@ -680,6 +681,36 @@ static esp_err_t contact_flash_post(httpd_req_t *req)
     return httpd_resp_sendstr(req, last_flash);
 }
 
+static bool to_contact_stock(void *ctx, const uint8_t *data, size_t len)
+{
+    (void)ctx;
+    return contact_stock_write(data, len);
+}
+
+static esp_err_t contact_stock_post(httpd_req_t *req)
+{
+    if (!require_auth(req) || refused_busy(req)) {
+        return ESP_OK;
+    }
+    if (req->content_len <= 0 || req->content_len > (int)STOCK_DUMP_LEN + 2048) {
+        return httpd_resp_send_err(
+            req, HTTPD_400_BAD_REQUEST,
+            "expected a 128 KB stock v1.8 flash dump or 126888-byte packed image (form field image, or body)");
+    }
+    char msg[160] = "";
+    if (!contact_stock_begin(msg, sizeof msg)) {
+        ESP_LOGW(TAG, "%s", msg);
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, msg);
+    }
+    bool rx_ok = receive(req, "image", to_contact_stock, NULL);
+    if (!contact_stock_end(rx_ok, msg, sizeof msg)) {
+        ESP_LOGW(TAG, "%s", msg);
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, msg);
+    }
+    ESP_LOGI(TAG, "%s", msg);
+    return httpd_resp_sendstr(req, msg);
+}
+
 typedef struct {
     char *buf;
     size_t len, cap;
@@ -933,6 +964,7 @@ void web_start(void)
         {.uri = "/contact/reset", .method = HTTP_POST, .handler = contact_reset_post},
         {.uri = "/contact/gwsync", .method = HTTP_POST, .handler = contact_gwsync_post},
         {.uri = "/contact/flash", .method = HTTP_POST, .handler = contact_flash_post},
+        {.uri = "/contact/stock", .method = HTTP_POST, .handler = contact_stock_post},
         {.uri = "/contact/nv", .method = HTTP_GET, .handler = contact_nv_get},
         {.uri = "/contact/nv", .method = HTTP_POST, .handler = contact_nv_post},
         {.uri = "/ota", .method = HTTP_POST, .handler = ota_post},

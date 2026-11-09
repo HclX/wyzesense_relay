@@ -417,19 +417,22 @@ def test_the_real_gateway_image_has_a_block():  # what the relays will carry
 STOCK_VERSION = '0.0.0.47 V1.8 Gateway GW3U'  # the stock v1.8 gateway's answer to 0x5316 (FACTS.md)
 
 
-def stock_image(pages=2):
+def stock_image(pages=30):
     rnd = random.Random(99)
+    code_pages = min(pages, 24)
     app = bytearray(struct.pack('<II', 0x20005000, 0x00010539))
-    app += bytes(rnd.randrange(256) for _ in range(pages * 4096 - len(app)))
+    app += bytes(rnd.randrange(256) for _ in range(code_pages * 4096 - len(app)))
+    app += bytes((pages - code_pages) * 4096)  # pages 24-29 are 24 KB of 0x00 in stock v1.8
     p31_code = bytes(0x4D ^ (i & 0xFF) for i in range(0xFA8))
     return bytes(app) + p31_code
 
 
 def test_stock_gateway_same_image_not_written(contact, tmp_path):
-    stk = stock_image(2)
+    stk = stock_image()
+    assert len(stk) == 0x1EFA8
     flash = chip()
-    flash[: 2 * 4096] = stk[: 2 * 4096]
-    flash[0x1F000 : 0x1F000 + 0xFA8] = stk[2 * 4096 :]
+    flash[:0x1E000] = stk[:0x1E000]
+    flash[0x1F000 : 0x1F000 + 0xFA8] = stk[0x1E000:]
     c, port, fifo = contact(flash, stock_mac=b'777B42DF')
     code, out = run(port, fifo, stk, tmp_path, extra=('--cjtag', 'same'))  # the debug port finds it equal
     assert code == 0 and out['result'] == 'same' and out['stock'] == 'yes', out
@@ -438,9 +441,10 @@ def test_stock_gateway_same_image_not_written(contact, tmp_path):
 
 
 def test_stock_gateway_replaces_ows_and_provisions_mac(contact, tmp_path):
-    stk = stock_image(2)
+    stk = stock_image()
     flash = chip()
     put(flash, image(1))
+    before_nv = bytes(flash[0x1E000:0x1F000])
     before_ccfg = bytes(flash[0x1FFA8:0x20000])
     c, port, fifo = contact(flash, stock_mac=None)
     c.jtag_image = stk
@@ -448,14 +452,16 @@ def test_stock_gateway_replaces_ows_and_provisions_mac(contact, tmp_path):
     assert code == 0 and out['result'] == 'updated' and out['stock'] == 'yes', out
     assert out['running'] == STOCK_VERSION and out['mac'] == '777B42DF'
     assert c.stock_mac == b'777B42DF'
-    assert bytes(flash[: 2 * 4096]) == stk[: 2 * 4096]
-    assert bytes(flash[0x1F000 : 0x1F000 + 0xFA8]) == stk[2 * 4096 :]
+    assert bytes(flash[:0x1E000]) == stk[:0x1E000]
+    assert bytes(flash[0x18000:0x1E000]) == bytes(0x6000)  # pages 24-29 are 24 KB of 0x00
+    assert bytes(flash[0x1E000:0x1F000]) == before_nv  # page 30 (NV) untouched
+    assert bytes(flash[0x1F000 : 0x1F000 + 0xFA8]) == stk[0x1E000:]
     assert bytes(flash[0x1FFA8:0x20000]) == before_ccfg
 
 
 def test_stock_gateway_never_over_the_bootloader(contact, tmp_path):
     # without the debug port the bootloader could write pages 0-29 only: the stock page-31 code would be left out
-    stk = stock_image(2)
+    stk = stock_image()
     flash = chip()
     put(flash, image(1))
     before = bytes(flash)
@@ -467,11 +473,11 @@ def test_stock_gateway_never_over_the_bootloader(contact, tmp_path):
 
 def test_stock_image_replaces_our_gateway_answering_the_stock_version(contact, tmp_path):
     # ours answers 0x5316 with the stock version string: that must not pass for the stock gateway (it did, 2026-11-08)
-    stk = stock_image(2)
+    stk = stock_image()
     flash = chip()
     put(flash, image(1))
     c, port, fifo = contact(flash, stock_mac=b'777B42DF')
     c.jtag_image = stk
     code, out = run(port, fifo, stk, tmp_path, extra=('--cjtag', 'ok'))
     assert code == 0 and out['result'] == 'updated' and out['stock'] == 'yes', out
-    assert bytes(flash[: 2 * 4096]) == stk[: 2 * 4096]
+    assert bytes(flash[:0x1E000]) == stk[:0x1E000]

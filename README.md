@@ -9,9 +9,9 @@ own MAC) connect to one wyzesense2mqtt-rs. While Wi-Fi or wyzesense2mqtt-rs is d
 | Path | What |
 |---|---|
 | `relay/` | the relay core, portable C with no I/O of its own: the WebSocket client (handshake, framing, client/server ping/pong, close), reconnects, the relay; `sock_posix.c`: its TCP link on BSD sockets (the PC and lwIP); `buffer.c`: the alarms kept through an outage (strict FIFO ordering, `1970` timestamp rebasing, remote SBL filtering; host protocol read with `firmware/common/host_proto.c`); `gwnv.c`: zero-ladder NV JSON import/export over `0x53F0` sub-IDs `0x04`/`0x06` |
-| `contact/` | the contact's ROM bootloader (`sbl.c`, including `sbl_stream_*` page-by-page streaming) and startup sync (`gwsync.c`): tries 4-wire software SBL (`0x53F0` sub-ID `0x05` `OWS_SUB_ENTER_SBL`) first and falls back to hardware `R` + `S`; enforces the rules of `tools/uart_sbl.py` (pages 0-29, page 30 only on request, page 31 never, CCFG checked first) |
+| `contact/` | the contact's ROM bootloader (`sbl.c`, including `sbl_stream_*` page-by-page streaming), 2-pin cJTAG debug port (`cjtag.c`), dedicated stock gateway partition packer/verifier (`stock_image.c`), and startup sync (`gwsync.c`): tries 4-wire software SBL (`0x53F0` sub-ID `0x05` `OWS_SUB_ENTER_SBL`) first and falls back to hardware `R` + `S`; enforces the rules of `tools/uart_sbl.py` (pages 0-29, page 30 only on request, page 31 never except page 31 code via `cjtag_write_page31_code`, CCFG checked first) |
 | `web/` | the shared Web UI (`index.html`), streaming `multipart/form-data` parser (`multipart.c`), HTTP Basic/Bearer auth (`http_auth.c`), and mDNS packet responder (`mdns.c`) |
-| `host/` | the cores on a PC: `ows-relay` (the counterpart of `tools/ws_bridge.py`), `ows-sbl` (of `tools/uart_sbl.py`), `ows-gwsync`, and the 6 host test binaries (`test_relay`, `test_buffer`, `test_gwnv`, `test_multipart`, `test_http_auth`, `test_mdns`) |
+| `host/` | the cores on a PC: `ows-relay` (the counterpart of `tools/ws_bridge.py`), `ows-sbl` (of `tools/uart_sbl.py`), `ows-gwsync`, and the host test binaries (`test_relay`, `test_buffer`, `test_cjtag`, `test_sblprobe`, `test_gwnv`, `test_stock_image`, `test_multipart`, `test_http_auth`, `test_mdns`, `test_rig`) |
 | `idf/` | the ESP-IDF firmware for the ESP32-S3 and classic ESP32 (`tools/idf.sh build`) |
 | `esp8266/` | the ESP8266 version (Wemos D1 mini / NodeMCU): an Arduino shell around the same relay, buffer, `gwnv`, `http_auth`, and streaming `sbl_stream_*` (`tools/pio.sh run`) |
 
@@ -118,6 +118,7 @@ curl -u admin:<pass> --data-binary @nv.json http://<ip>/contact/nv        # zero
 uv run python tools/contact_image.py BOOT.bin SLOT_A.img contact.bin      # a sensor image (selector + slot A)
 curl -u admin:<pass> --data-binary @build/fw/firmware/gateway-contact-v1-app.bin \
   'http://<ip>/contact/flash?mac=777B42DF&nv=wipe&keep=1'
+curl -u admin:<pass> -F image=@FLASH.bin http://<ip>/contact/stock        # store stock v1.8 gateway in flash partition
 curl -u admin:<pass> --data-binary @esp32/idf/build/ows_relay.bin http://<ip>/ota   # this firmware; it restarts
 ```
 
@@ -129,11 +130,41 @@ a custom bench image with the embedded gateway), resets into the new firmware, a
 other app slot; on ESP-IDF the new firmware stays only once it reaches the network again, otherwise the next reset rolls
 back.
 
+### Stock Wyze v1.8 gateway firmware (dedicated flash partition)
+
+Stock Wyze firmware is never embedded in any relay app binary. Instead, the relay stores it in a dedicated flash area
+separate from the app (`gwstock` data partition at `0x320000`, size `0x20000` in `idf/partitions.csv` on ESP32 /
+ESP32-S3; the unused `_FS_start` filesystem area at `0x300000` on 4 MB ESP8266 D1 mini builds), surviving `/ota` app
+updates until a full USB flash erase.
+
+- **Stored format (`contact/stock_image.h`)**: 48-byte header (`magic = "OWSSTOCK"`, `format = 1`, `len = 0x1EFA8`,
+  and the 32-byte SHA-256) followed by the `0x1EFA8`-byte (126,888 B) packed image: CC1310 pages 0–29 (`0x1E000` B,
+  including pages 24–29 which are 24 KB of `0x00` in stock v1.8) plus page 31's code (`0x1F000..0x1FFA7`, `0xFA8` B).
+  Page 30 (per-dongle NV) and the 88-byte CCFG (`0x1FFA8..0x1FFFF`) are excluded.
+- **Upload in the field (`POST /contact/stock` or the Update tab's "Stock gateway firmware" card)**: accepts either a
+  full 128 KB (`0x20000`) dongle flash dump (`FLASH.bin` or `flash.bin` from `ows-flash backup`, packed on the fly) or
+  the packed `0x1EFA8`-byte image. The relay verifies that the packed image's SHA-256 equals the known v1.8 digest
+  `ab9c235bbce832a7dc74d67092199ba4108d8d24a33209c781bf483b85684ea0` before writing the partition, then reads it back
+  and verifies it. `GET /api/status` reports `"stock_stored": true|false` (the relay never serves the stored image
+  back). Once stored, select **Stock Wyze v1.8 (dongle gateway)** in Setup (`gw_fw=stock`); at startup `gwsync` writes
+  pages 0–29 and page 31's code through the debug port (`cJTAG` on `M`/`C`). Existing ESP32 / ESP32-S3 relays built
+  before the `gwstock` partition was added need a one-time full USB flash so their partition table includes `gwstock`.
+- **Local pre-population (`tools/stock_partition.py`)**: build the partition image on a PC and flash it directly with
+  `esptool.py`:
+
+```bash
+uv run python tools/stock_partition.py FLASH.bin build/gwstock.bin
+# ESP32 / ESP32-S3 (gwstock partition at 0x320000 in idf/partitions.csv):
+esptool.py write_flash 0x320000 build/gwstock.bin
+# ESP8266 4 MB Wemos D1 mini (_FS_start = 0x40500000 - 0x40200000 = 0x300000 in eagle.flash.4m1m.ld):
+esptool.py write_flash 0x300000 build/gwstock.bin
+```
+
 ## Security and limits
 
 - **Authentication (`esp32/web/http_auth.c`)**: Once `admin_pass` (or WebSocket `token`) is configured, all mutating HTTP
-  endpoints (`POST /setup`, `POST /ota`, `POST /contact/reset`, `POST /contact/flash`, `POST /contact/gwsync`,
-  `POST /contact/nv`, and `#ifdef OWS_DEBUG_UART` `/debug/uart`) require HTTP Basic (`-u admin:<pass>`) or
+  endpoints (`POST /setup`, `POST /ota`, `POST /contact/reset`, `POST /contact/flash`, `POST /contact/stock`,
+  `POST /contact/gwsync`, `POST /contact/nv`, and `#ifdef OWS_DEBUG_UART` `/debug/uart`) require HTTP Basic (`-u admin:<pass>`) or
   `Authorization: Bearer <pass>`. `GET /setup` never echoes saved Wi-Fi/token/admin secrets.
 - **Fallback SoftAP lifecycle**: When `ssid` is configured and Wi-Fi drops (e.g., router reboot), the relay retries STA
   with backoff (`~90–120 s`) before opening `OWS-relay-XXXX`, tears down the SoftAP immediately (`WIFI_MODE_STA` /

@@ -331,30 +331,177 @@ bool contact_flash(const uint8_t *image, size_t len, const char *expect_mac, boo
 
 // --- at the start: the contact on the gateway image this firmware carries (esp32/contact/gwsync.c, #76) ---
 
+#include <stdlib.h>
+
 #include "esp_log.h"
+#include "esp_partition.h"
 #include "esp_timer.h"
 #include "gwsync.h"
-#include "settings.h"
 #include "pins.h"
+#include "settings.h"
+#include "stock_image.h"
 
 extern const uint8_t gw_image_start[] asm("_binary_gateway_contact_v1_app_bin_start");
 extern const uint8_t gw_image_end[] asm("_binary_gateway_contact_v1_app_bin_end");
-extern const uint8_t gw_stock_start[] asm("_binary_gateway_stock_v1_8_app_bin_start");
-extern const uint8_t gw_stock_end[] asm("_binary_gateway_stock_v1_8_app_bin_end");
+
+static const esp_partition_t *s_stock_part;
+static const uint8_t *s_stock_mmap;
+static esp_partition_mmap_handle_t s_stock_mmap_h;
+static bool s_stock_probed;
+static bool s_stock_valid;
+
+static bool stock_part_read(void *ctx, uint32_t off, uint8_t *buf, size_t len)
+{
+    const esp_partition_t *p = ctx;
+    return esp_partition_read(p, off, buf, len) == ESP_OK;
+}
+
+static void stock_part_probe(char *err, size_t err_cap)
+{
+    if (s_stock_mmap) {
+        esp_partition_munmap(s_stock_mmap_h);
+        s_stock_mmap = NULL;
+    }
+    s_stock_probed = true;
+    s_stock_valid = false;
+    s_stock_part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, STOCK_PART_LABEL);
+    if (!s_stock_part || s_stock_part->size < STOCK_PART_LEN) {
+        if (err && err_cap) {
+            snprintf(err, err_cap,
+                     "no gwstock partition in the partition table: flash the full relay image over USB first");
+        }
+        return;
+    }
+    uint8_t buf[256];
+    char dummy[96];
+    if (!stock_verify_partition(stock_part_read, (void *)s_stock_part, k_stock_image_sha256, buf, sizeof buf,
+                                err ? err : dummy, err ? err_cap : sizeof dummy)) {
+        return;
+    }
+    const void *ptr = NULL;
+    if (esp_partition_mmap(s_stock_part, 0, STOCK_PART_LEN, ESP_PARTITION_MMAP_DATA, &ptr, &s_stock_mmap_h) != ESP_OK) {
+        if (err && err_cap) {
+            snprintf(err, err_cap, "mapping gwstock partition failed");
+        }
+        return;
+    }
+    s_stock_mmap = (const uint8_t *)ptr;
+    s_stock_valid = true;
+}
 
 bool contact_stock_gw_available(void)
 {
-    return (size_t)(gw_stock_end - gw_stock_start) > GWSYNC_PAGE31_CODE_LEN;
+    if (!s_stock_probed) {
+        stock_part_probe(NULL, 0);
+    }
+    return s_stock_valid && s_stock_mmap != NULL;
 }
 
 static const uint8_t *active_gw_image(uint32_t *len_out)
 {
     if (settings.stock_gw && contact_stock_gw_available()) {
-        *len_out = (uint32_t)(gw_stock_end - gw_stock_start);
-        return gw_stock_start;
+        *len_out = STOCK_IMAGE_LEN;
+        return s_stock_mmap + STOCK_HDR_LEN;
     }
     *len_out = (uint32_t)(gw_image_end - gw_image_start);
     return gw_image_start;
+}
+
+// The upload streams into the partition (the heap could not hold the image): one image can ever pass the hash, so a
+// stored one refuses another upload; otherwise the partition is erased, pages 0-29 written as they come, and the
+// page-31 code (kept in a 4 KB buffer by the packer) and then the header written only once the SHA-256 matched. The
+// header is what makes it valid (stock_part_probe also hashes the whole image at every start).
+static stock_pack_t s_stock_pack;
+static uint8_t *s_stock_p31;
+static bool s_stock_write_ok;
+
+static bool stock_part_write(void *ctx, uint32_t off, const uint8_t *data, size_t len)
+{
+    (void)ctx;
+    if (off >= STOCK_APP_LEN) {  // the page-31 code: written in contact_stock_end, after the hash
+        return off == STOCK_APP_LEN && len == STOCK_PAGE31_CODE_LEN;
+    }
+    if (off + len > STOCK_APP_LEN) {
+        return false;
+    }
+    bool ok = esp_partition_write(s_stock_part, STOCK_HDR_LEN + off, data, len) == ESP_OK;
+    s_stock_write_ok = s_stock_write_ok && ok;
+    return ok;
+}
+
+bool contact_stock_begin(char *msg, size_t cap)
+{
+    s_stock_part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, STOCK_PART_LABEL);
+    if (!s_stock_part || s_stock_part->size < STOCK_PART_LEN) {
+        snprintf(msg, cap, "no gwstock partition in the partition table: flash the full relay image over USB first");
+        return false;
+    }
+    if (contact_stock_gw_available()) {
+        snprintf(msg, cap, "the stock v1.8 gateway image is stored already (it stays; no other image can pass)");
+        return false;
+    }
+    free(s_stock_p31);
+    s_stock_p31 = malloc(SBL_PAGE);
+    if (!s_stock_p31) {
+        snprintf(msg, cap, "out of memory for the stock image upload");
+        return false;
+    }
+    if (s_stock_mmap) {
+        esp_partition_munmap(s_stock_mmap_h);
+        s_stock_mmap = NULL;
+    }
+    s_stock_valid = false;
+    if (esp_partition_erase_range(s_stock_part, 0, s_stock_part->size) != ESP_OK) {
+        free(s_stock_p31);
+        s_stock_p31 = NULL;
+        snprintf(msg, cap, "erasing the gwstock partition failed");
+        return false;
+    }
+    s_stock_write_ok = true;
+    stock_pack_init(&s_stock_pack, s_stock_p31, stock_part_write, NULL);
+    return true;
+}
+
+bool contact_stock_write(const uint8_t *data, size_t len)
+{
+    return s_stock_p31 && stock_pack_feed(&s_stock_pack, data, len);
+}
+
+bool contact_stock_end(bool rx_ok, char *msg, size_t cap)
+{
+    uint8_t hdr[STOCK_HDR_LEN];
+    bool ok = s_stock_p31 != NULL;
+    if (ok && !rx_ok && !s_stock_pack.overflow) {
+        snprintf(msg, cap, "stock image upload broke off");
+        ok = false;
+    }
+    if (ok && !stock_pack_finish(&s_stock_pack, k_stock_image_sha256, hdr, NULL, msg, cap)) {
+        ok = false;
+    }
+    if (ok && !s_stock_write_ok) {
+        snprintf(msg, cap, "writing the gwstock partition failed");
+        ok = false;
+    }
+    if (ok) {
+        ok = esp_partition_write(s_stock_part, STOCK_HDR_LEN + STOCK_APP_LEN, s_stock_p31, STOCK_PAGE31_CODE_LEN) ==
+                 ESP_OK &&
+             esp_partition_write(s_stock_part, 0, hdr, STOCK_HDR_LEN) == ESP_OK;  // last: it makes the image valid
+        if (!ok) {
+            snprintf(msg, cap, "writing the gwstock partition failed");
+        }
+    }
+    free(s_stock_p31);
+    s_stock_p31 = NULL;
+    if (!ok) {
+        return false;  // no header: nothing stored (the partition was erased at the start)
+    }
+    stock_part_probe(msg, cap);
+    if (!s_stock_valid) {
+        return false;
+    }
+    snprintf(msg, cap, "stock v1.8 gateway image stored and verified (%u bytes, SHA-256 %.16s...)",
+             (unsigned)STOCK_IMAGE_LEN, STOCK_IMAGE_SHA256_HEX);
+    return true;
 }
 
 static gwsync_report_t gw_report;

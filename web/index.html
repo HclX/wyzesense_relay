@@ -169,6 +169,15 @@ bootloader without reflashing the ESP.</p>
 <label class=check><input type=checkbox id=gwwipe>Wipe paired sensors (NV page 30)</label>
 <button class=btn id=gwgo>Flash radio</button>
 <div class=prog id=gwprog><i></i></div><div class=msg id=gwmsg></div></div>
+
+<div class=card><h2>Stock gateway firmware</h2>
+<p class=note>Store a Wyze v1.8 dongle gateway dump (128 KB <code>FLASH.bin</code> / <code>flash.bin</code>, or the
+packed <code>0x1EFA8</code> image) in the relay’s dedicated flash partition so Setup can select Stock Wyze v1.8.</p>
+<dl style="margin-top:8px"><dt>Stored</dt><dd id=stkstate>–</dd>
+<dt>v1.8 SHA-256</dt><dd><code>ab9c235bbce832a7dc74d67092199ba4108d8d24a33209c781bf483b85684ea0</code></dd></dl>
+<label>Dump or packed image</label><input type=file id=stkfile accept=".bin">
+<button class=btn id=stkgo>Upload stock image</button>
+<div class=prog id=stkprog><i></i></div><div class=msg id=stkmsg></div></div>
 </div></section>
 
 <section id=setup hidden><div class=grid><div class=card><h2>Wiring (<span class=chip>this relay</span>)</h2>
@@ -293,7 +302,8 @@ $('rssi').textContent=s.ip?s.rssi+' dBm':'–';$('up').textContent=dur(s.uptime)
 $('heap').textContent=(s.heap/1024).toFixed(1)+' KB';$('auth').textContent=s.auth?'password set':'open (set in Setup)';
 $('build').textContent=s.build;renderSensors(s.sensors||[]);
 document.querySelectorAll('.chip').forEach(e=>e.textContent=s.chip);noteWires(s);drawWiring(s);$('fwhint').textContent=s.fw_file;
-if(s.stock_available===false){$('optstock').disabled=true;$('optstock').textContent='Stock Wyze v1.8 (not embedded in this build)'}
+const stk=!!s.stock_stored;$('stkstate').textContent=stk?'yes (verified in flash partition)':'no (upload on Update tab)';
+$('optstock').disabled=!stk;$('optstock').textContent=stk?'Stock Wyze v1.8 (dongle gateway)':'Stock Wyze v1.8 (upload on Update tab first)';
 if(!filled){filled=true;$('ssid').value=s.ssid;$('seturl').value=s.url;$('setrole').value=String(role);if(s.gw_fw)$('setgwfw').value=s.gw_fw;if(s.contact_flash)$('setcflash').value=s.contact_flash}
 }catch(e){pill('bad','relay not answering')}}
 setInterval(poll,2000);poll();
@@ -326,6 +336,7 @@ $('cgwapp').textContent=(g<0?'raw image ('+b.length+' B)':txt(b,g+64,12)+' · '+
 $('cgwver').textContent=g<0?'no build-info block':txt(b,g+76,40)+' · '+Array.from(b.slice(g+8,g+16),x=>x.toString(16).padStart(2,'0')).join('').slice(0,8)};
 $('gwgo').onclick=()=>{const q=[];if($('gwkeep').checked)q.push('keep=1');if($('gwwipe').checked)q.push('nv=wipe');
 upload('/contact/flash'+(q.length?'?'+q.join('&'):''),'image',$('gwfile').files[0],$('gwprog'),$('gwmsg'),$('gwgo'))};
+$('stkgo').onclick=()=>upload('/contact/stock','image',$('stkfile').files[0],$('stkprog'),$('stkmsg'),$('stkgo'));
 $('reset').onclick=async()=>{const r=await fetch('/contact/reset',{method:'POST'});
 showMsg($('resetmsg'),r.ok,r.ok?'Radio reset sent.':(r.status==401?'Authentication required.':(await r.text()).trim()||'Failed.'));
 setTimeout(()=>$('resetmsg').textContent='',4000)};

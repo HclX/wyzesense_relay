@@ -22,6 +22,12 @@ Tick with the date and the evidence; remove what gets done.
     (all three relays: 9A78, 9130, B15C / 777B42DF). The relay now restarts it once more after a write; check that on
     hardware. Cause unknown (the first start reformatting our NV page 30?).
   - The step "written: asking the new gateway" also shows when nothing was written (stock, the debug port equal).
+  - **Dedicated stock partition (`gwstock` / `_FS_start`)**: the stock image is no longer embedded in the app; it is
+    uploaded via `POST /contact/stock` (or pre-populated with `tools/stock_partition.py`) and packs all 30 app pages
+    (`0x1E000`, including pages 24–29 of `0x00`) plus page 31 code (`0xFA8`) = `0x1EFA8` bytes. Left on hardware:
+    1. First flash over USB on existing ESP32 / ESP32-S3 relays so their partition table gets `gwstock` at `0x320000`.
+    2. Upload the 128 KB stock v1.8 dump via `POST /contact/stock` (or pre-populate with `tools/stock_partition.py`) on
+       ESP32 and ESP8266 and verify that the contact now gets pages 24–29 (`0x00`) written as well.
 - **The host protocol** (`common/host_proto.*`) is a copy of openwyzesense's `firmware/common/host_proto.*`: keep the
   two in step (openwyzesense's #28 adds secured-link constants).
 

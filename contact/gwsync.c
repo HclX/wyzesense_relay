@@ -485,7 +485,7 @@ gwsync_result_t gwsync_run(const gwsync_io_t *io, uint32_t image_len, sbl_t *sbl
         step(io, "%s: through its debug port (cJTAG)", r->answered ? "another gateway" : "no answer");
         int written = io->cjtag_flash(io->ctx, image_len, r->mac, err, sizeof err);
         if (written == 0 && carried_stock) {
-            // the flash already holds the stock image (pages 0-23 and page 31's code, compared through the debug
+            // the flash already holds the stock image (pages 0-29 and page 31's code, compared through the debug
             // port): only its identity is checked (the contact's MAC in the stock NV)
             r->via_cjtag = true;
             gwsync_result_t res = check_new(io, r, want, true);
@@ -621,12 +621,14 @@ static gwsync_result_t check_new(const gwsync_io_t *io, gwsync_report_t *r, cons
 gwsync_result_t gwsync_probe(const gwsync_io_t *io, uint32_t image_len, uint8_t *page, gwsync_report_t *r)
 {
     memset(r, 0, sizeof *r);
+    bool carried_ows = false;
     if (image_len && image_len % 4 == 0 && image_len <= SBL_APP_END) {
         size_t head = image_len < SEARCH ? image_len : SEARCH;
         if (io->image(io->ctx, 0, page, head)) {
-            gwsync_find_info(page, head, &r->carried);
+            carried_ows = gwsync_find_info(page, head, &r->carried) && strcmp(r->carried.app, "gateway") == 0;
         }
-    } else if (image_len > GWSYNC_PAGE31_CODE_LEN && io->image(io->ctx, 0, page, 8)) {
+    }
+    if (!carried_ows && image_len > GWSYNC_PAGE31_CODE_LEN && io->image(io->ctx, 0, page, 8)) {
         is_stock_image(io, image_len, page, &r->carried);
     }
     step(io, "auto-sync paused: probing running gateway");

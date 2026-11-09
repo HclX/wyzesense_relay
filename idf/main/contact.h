@@ -41,6 +41,9 @@ bool contact_flash_end(bool rx_ok, char *msg, size_t cap);
 // esp32/contact/gwsync.c): asked for its image ID, reflashed if it runs another image. Takes the UART meanwhile.
 void contact_gwsync(void);
 bool contact_stock_gw_available(void);
+bool contact_stock_begin(char *msg, size_t cap);
+bool contact_stock_write(const uint8_t *data, size_t len);
+bool contact_stock_end(bool rx_ok, char *msg, size_t cap);
 
 // What it found (NULL before it ran)
 const gwsync_report_t *contact_gwsync_report(void);

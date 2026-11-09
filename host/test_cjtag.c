@@ -798,14 +798,20 @@ int main(void)
         CHECK(cjtag_write_page31_code(&cj, code, page_buf, orig) == 0);  // already so
         CHECK(cjtag_flash_page(&cj, 2, new_page, false));                // the new CRC is the one checked now
 
-        // Stock gateway image (N * CJTAG_PAGE + CJTAG_PAGE31_CODE_LEN): writes app pages + page 31 code, keeps CCFG
-        static uint8_t stock_img[(size_t)2 * CJTAG_PAGE + CJTAG_PAGE31_CODE_LEN];
-        memcpy(stock_img, sim.flash, (size_t)2 * CJTAG_PAGE);
+        // Stock gateway image (0x1EFA8 = 30 * CJTAG_PAGE + CJTAG_PAGE31_CODE_LEN): writes pages 0-29 (including
+        // pages 24-29 of 0x00) + page 31 code, leaves page 30 (NV) and the 88-byte CCFG untouched
+        static uint8_t stock_img[CJTAG_APP_END + CJTAG_PAGE31_CODE_LEN];
+        static uint8_t orig_nv[CJTAG_PAGE];
+        memset(sim.flash + (size_t)CJTAG_NV_PAGE_IDX * CJTAG_PAGE, 0xA7, CJTAG_PAGE);
+        memcpy(orig_nv, sim.flash + (size_t)CJTAG_NV_PAGE_IDX * CJTAG_PAGE, CJTAG_PAGE);
+        memcpy(stock_img, sim.flash, (size_t)24 * CJTAG_PAGE);
         memset(stock_img + CJTAG_PAGE, 0x91, CJTAG_PAGE);
-        memset(stock_img + (size_t)2 * CJTAG_PAGE, 0x5E, CJTAG_PAGE31_CODE_LEN);
-        CHECK(cjtag_write_image(&cj, image_fn, stock_img, sizeof stock_img, page_buf) == 2);
-        CHECK(memcmp(sim.flash + CJTAG_PAGE, stock_img + CJTAG_PAGE, CJTAG_PAGE) == 0);
-        CHECK(memcmp(p31, stock_img + (size_t)2 * CJTAG_PAGE, CJTAG_PAGE31_CODE_LEN) == 0);
+        memset(stock_img + (size_t)24 * CJTAG_PAGE, 0x00, (size_t)6 * CJTAG_PAGE);
+        memset(stock_img + (size_t)CJTAG_APP_END, 0x5E, CJTAG_PAGE31_CODE_LEN);
+        CHECK(cjtag_write_image(&cj, image_fn, stock_img, sizeof stock_img, page_buf) == 8);
+        CHECK(memcmp(sim.flash, stock_img, (size_t)CJTAG_APP_END) == 0);
+        CHECK(memcmp(sim.flash + (size_t)CJTAG_NV_PAGE_IDX * CJTAG_PAGE, orig_nv, CJTAG_PAGE) == 0);
+        CHECK(memcmp(p31, stock_img + (size_t)CJTAG_APP_END, CJTAG_PAGE31_CODE_LEN) == 0);
         CHECK(memcmp(p31 + CJTAG_PAGE31_CODE_LEN, before + CJTAG_PAGE31_CODE_LEN, 88) == 0);
         CHECK(cjtag_write_image(&cj, image_fn, stock_img, sizeof stock_img, page_buf) == 0);
 
