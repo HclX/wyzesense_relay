@@ -6,7 +6,8 @@
 
 #include "host_proto.h"
 
-#define BOOT_MS           300  // after a reset, before the gateway is asked
+#define BOOT_MS           300   // after a reset, before the gateway is asked
+#define STOCK_BOOT_MS     2000  // the stock gateway (TI-RTOS) answers ~1.5 s after its start (9A78, 2026-11-08)
 #define TRIES             3
 #define WAIT_MS           200  // a read's wait; an answer has WAITS of them
 #define MAC_WAIT_MS       250
@@ -575,6 +576,7 @@ static gwsync_result_t check_new(const gwsync_io_t *io, gwsync_report_t *r, cons
     step(io, "written: asking the new gateway");
     uint32_t junk = 0;
     if (carried_stock) {
+        io->sleep_ms(io->ctx, STOCK_BOOT_MS - BOOT_MS);
         if (!query_stock(io, &r->running, &junk, TRIES)) {
             snprintf(r->msg, sizeof r->msg, "flashed, but the stock gateway did not answer");
             return done(io, r, GWSYNC_FAILED, false);
