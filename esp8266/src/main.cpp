@@ -991,7 +991,7 @@ String js(const char *v)
 void api_status()
 {
     static const char *states[] = {"down", "handshake", "connected"};
-    char n[220];
+    char n[320];  // the fields below: ~250 bytes since gw_fw / stock_available (220 cut "heap" off)
     uint32_t now = now_ms();
     String b;
     b.reserve(2560);
