@@ -18,8 +18,9 @@ Tick with the date and the evidence; remove what gets done.
   coordinator 0x7F38 (77A9B885), 0x23C3 / 0x561B (7779749A). Open:
   - openwyzesense's LaunchPad sensor does not join it ("join failed": the permit beacon heard at -39 dBm, no answer
     to its association), though it joins a stock dongle; the stock sensors do.
-  - The stock gateway on 77A9B885 stopped answering the UART once after its first connections (Inquiry timed out);
-    a restart (`/contact/reset`) brought it back. Not seen again.
+  - After its first write the stock gateway answers the relay's check but not the host's handshake until a restart
+    (all three relays: 9A78, 9130, B15C / 777B42DF). The relay now restarts it once more after a write; check that on
+    hardware. Cause unknown (the first start reformatting our NV page 30?).
   - The step "written: asking the new gateway" also shows when nothing was written (stock, the debug port equal).
 - **The host protocol** (`common/host_proto.*`) is a copy of openwyzesense's `firmware/common/host_proto.*`: keep the
   two in step (openwyzesense's #28 adds secured-link constants).

@@ -594,6 +594,10 @@ static gwsync_result_t check_new(const gwsync_io_t *io, gwsync_report_t *r, cons
         } else if (r->mac[0] == '\0' && nv_mac[0] != '\0') {
             memcpy(r->mac, nv_mac, sizeof r->mac);
         }
+        // one more start before the host comes: after its first start on a freshly written image the stock gateway
+        // answered this check but nothing after it until a restart (all three bench relays, 2026-11-08)
+        io->reset(io->ctx);
+        io->sleep_ms(io->ctx, STOCK_BOOT_MS);
         snprintf(r->msg, sizeof r->msg, "updated to the carried stock gateway %s (%s)%s", r->running.version, want,
                  r->via_cjtag ? " through the debug port" : "");
         return done(io, r, GWSYNC_UPDATED, false);
