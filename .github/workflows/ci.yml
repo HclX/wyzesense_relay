@@ -94,3 +94,50 @@ jobs:
         with:
           name: esp8266-relay
           path: esp8266/.pio/build/d1_mini/firmware.bin
+
+  release:
+    # the release bundle (tools/release_bundle.py, manifest.json as openwyzesense's: wyzesense2mqtt-rs updates relays
+    # from it): every run assembles it as an artifact; a v* tag publishes it as a GitHub Release (a tag with a '-' as a
+    # pre-release). Only when every other job passed. CI's images carry no stock firmware (no dump here; the tool
+    # refuses an image that does).
+    runs-on: ubuntu-24.04
+    needs: [lint, build-and-test, esp32, esp8266]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: esp32-relay
+          path: in/esp32
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: esp8266-relay
+          path: in/esp8266
+
+      - name: Assemble the bundle
+        run: |
+          uv run tools/release_bundle.py --version "$(git describe --always --dirty --tags)" \
+            --esp32 in/esp32 --esp8266 in/esp8266/firmware.bin --out dist
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-bundle
+          path: dist
+
+      - name: Publish the GitHub Release (v* tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""
+          case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* --verify-tag $pre --title "WyzeSense relay $GITHUB_REF_NAME" \
+            --notes-file dist/README.md

@@ -5,11 +5,11 @@ Tick with the date and the evidence; remove what gets done.
 
 ## Next
 
-- **A release with its own manifest.json** in openwyzesense's format (`format`, `version`, `files[]` with `file`,
-  `product`, `size`, `sha256`): wyzesense2mqtt-rs (`ows` branch, `src/firmware/relay.rs`) updates relays from the
-  products `relay-esp32-ota`, `relay-esp32s3-ota` and `relay-esp8266`, today from openwyzesense's release (v0.2.4);
-  openwyzesense's releases no longer carry them after the split, so w2m needs this repository as its relay source.
-  Images carry `OWS-RELAY-VERSION:<v>`; also the first-flash images (`relay-<chip>-full`) and `72-esp-usb-serial.rules`.
+- **The first release**: `tools/release_bundle.py` and CI's `release` job (manifest.json in openwyzesense's format,
+  the products `relay-esp32-ota`, `relay-esp32s3-ota`, `relay-esp8266` that wyzesense2mqtt-rs updates relays from,
+  plus the first-flash images and `72-esp-usb-serial.rules`; any image with stock firmware refused) are in. Left: the
+  user's tag (v*), and wyzesense2mqtt-rs (`ows`) taking relay images from this repository's releases instead of
+  openwyzesense's before openwyzesense releases without them.
 - **Stock gateway firmware on a contact board** (Setup: `gw_fw` `stock`): works on both relays (2026-11-08, with
   the stock-only wyzesense2mqtt-rs release v0.1.3): flashed through the debug port (ESP32 9A78 / 7779749A, ESP8266 9130
   / 77A9B885, ~2.5 min on the ESP8266), the handshake through the translation (Get MAC answered by the relay with the
