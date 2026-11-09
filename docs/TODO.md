@@ -18,16 +18,15 @@ Tick with the date and the evidence; remove what gets done.
   coordinator 0x7F38 (77A9B885), 0x23C3 / 0x561B (7779749A). Open:
   - openwyzesense's LaunchPad sensor does not join it ("join failed": the permit beacon heard at -39 dBm, no answer
     to its association), though it joins a stock dongle; the stock sensors do.
-  - After its first write the stock gateway answers the relay's check but not the host's handshake until a restart
-    (all three relays: 9A78, 9130, B15C / 777B42DF). The relay now restarts it once more after a write; check that on
-    hardware. Cause unknown (the first start reformatting our NV page 30?).
   - The step "written: asking the new gateway" also shows when nothing was written (stock, the debug port equal).
-  - **Dedicated stock partition (`gwstock` / `_FS_start`)**: the stock image is no longer embedded in the app; it is
-    uploaded via `POST /contact/stock` (or pre-populated with `tools/stock_partition.py`) and packs all 30 app pages
-    (`0x1E000`, including pages 24–29 of `0x00`) plus page 31 code (`0xFA8`) = `0x1EFA8` bytes. Left on hardware:
-    1. First flash over USB on existing ESP32 / ESP32-S3 relays so their partition table gets `gwstock` at `0x320000`.
-    2. Upload the 128 KB stock v1.8 dump via `POST /contact/stock` (or pre-populate with `tools/stock_partition.py`) on
-       ESP32 and ESP8266 and verify that the contact now gets pages 24–29 (`0x00`) written as well.
+  - Write MAC (0x5308) does not persist (Get MAC answers zeros after a restart), also with pages 24-29 in place and a
+    fresh NV page (777B42DF, 2026-11-09): not those pages. Harmless: the relay answers Get MAC itself.
+  - **Dedicated stock partition**: on hardware on B15C (2026-11-09): USB first flash with the new partition table
+    (settings kept: bootloader, table, otadata and app written separately, not the merged image), a tampered dump
+    refused by its hash, the real dump stored and verified, a second upload refused, the image kept across an OTA
+    update, and the sync wrote the contact's pages 24 and 25 (26-29 already 0x00) and registered with w2m without a
+    manual restart (the extra restart after a stock write works). Left: 9A78 (USB first flash), the ESP8266 9130
+    (OTA, upload), and our LaunchPad sensor joining a stock-on-contact gateway with pages 24-29 in place.
 - **The host protocol** (`common/host_proto.*`) is a copy of openwyzesense's `firmware/common/host_proto.*`: keep the
   two in step (openwyzesense's #28 adds secured-link constants).
 
