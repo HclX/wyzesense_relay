@@ -45,6 +45,12 @@ Five wires. The ESP powers the contact board from its 3.3 V pin. `R` is the cont
 the board's bootloader backdoor), and `T` its output (the ESP's RX). `S` (reset) lets the ESP reset and reflash the
 board.
 
+**Keep the contact board away from the ESP: 20-30 cm of wire**, with the board's antenna end pointing away from the
+ESP, its Wi-Fi antenna and the USB cable. Right next to the ESP the board hears sensors much worse: on the bench
+(2026-11-08), two sensors side by side were heard 14-18 dB better by a relay with long wires than by one with short
+wires, the sensors swapped to rule them out. That is the difference between a sensor in the next room and one that
+drops out.
+
 ### ESP32-S3
 
 ![Wiring a v1 contact to an ESP32-S3: V− to GND, S to GPIO4, V+ to 3V3, R to GPIO17, T to GPIO18](../img/wiring-contact-esp32s3.svg)

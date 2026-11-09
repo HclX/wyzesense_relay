@@ -25,6 +25,12 @@ Tick with the date and the evidence; remove what gets done.
 - **The host protocol** (`common/host_proto.*`) is a copy of openwyzesense's `firmware/common/host_proto.*`: keep the
   two in step (openwyzesense's #28 adds secured-link constants).
 
+- **Reception and wiring**: a short-wired relay heard two side-by-side sensors 14-18 dB worse than a long-wired
+  one (swapped to rule the sensors out; 9130 short vs B15C long, 2026-11-08). Not separated yet: the wire length vs
+  ESP8266 vs ESP32 vs the board; the same ESP and board with short then long wires would settle it. The guide now
+  says 20-30 cm. The VDDR boost (`POST /contact/vddr`, ESP32 only) is on for B15C / 777B42DF: its effect (transmit
+  only) still to measure with the LaunchPad's beacon RSSI.
+
 ## Bench checklist
 
 - `TASK-08` (relay half): a sensor OTA through an ESP32 and an ESP8266 relay with no poll timeouts; a relay whose
