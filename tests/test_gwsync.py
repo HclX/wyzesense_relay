@@ -120,7 +120,7 @@ class FakeContact(FakeRom):
                     else:
                         rsp = bytes([host.OWS_SUB_BUILD_INFO])
                     os.write(self.fd, host.build(host.OWS_RSP, rsp, to_host=True))
-            elif m['cmd'] == 0x5316 and is_stock:
+            elif m['cmd'] == 0x5316:  # ours answers it with the stock string too (gateway.c VERSION)
                 os.write(self.fd, host.build_ack(0x5316, to_host=True))
                 os.write(self.fd, host.build(0x5317, STOCK_VERSION.encode(), to_host=True))
             elif m['cmd'] == 0x5304 and is_stock:
@@ -431,10 +431,10 @@ def test_stock_gateway_same_image_not_written(contact, tmp_path):
     flash[: 2 * 4096] = stk[: 2 * 4096]
     flash[0x1F000 : 0x1F000 + 0xFA8] = stk[2 * 4096 :]
     c, port, fifo = contact(flash, stock_mac=b'777B42DF')
-    code, out = run(port, fifo, stk, tmp_path)
-    assert code == 0 and out['result'] == 'same' and out['answered'] == 'yes' and out['stock'] == 'yes', out
+    code, out = run(port, fifo, stk, tmp_path, extra=('--cjtag', 'same'))  # the debug port finds it equal
+    assert code == 0 and out['result'] == 'same' and out['stock'] == 'yes', out
     assert out['carried'] == STOCK_VERSION and out['running'] == STOCK_VERSION and out['mac'] == '777B42DF'
-    assert c.pads == ['R'] and not c.writes
+    assert not c.writes
 
 
 def test_stock_gateway_replaces_ows_and_provisions_mac(contact, tmp_path):
@@ -463,3 +463,15 @@ def test_stock_gateway_never_over_the_bootloader(contact, tmp_path):
     code, out = run(port, fifo, stk, tmp_path)
     assert code != 0 and out['result'] == 'failed' and any('debug port' in v for v in out.values()), out
     assert bytes(flash) == before
+
+
+def test_stock_image_replaces_our_gateway_answering_the_stock_version(contact, tmp_path):
+    # ours answers 0x5316 with the stock version string: that must not pass for the stock gateway (it did, 2026-11-08)
+    stk = stock_image(2)
+    flash = chip()
+    put(flash, image(1))
+    c, port, fifo = contact(flash, stock_mac=b'777B42DF')
+    c.jtag_image = stk
+    code, out = run(port, fifo, stk, tmp_path, extra=('--cjtag', 'ok'))
+    assert code == 0 and out['result'] == 'updated' and out['stock'] == 'yes', out
+    assert bytes(flash[: 2 * 4096]) == stk[: 2 * 4096]

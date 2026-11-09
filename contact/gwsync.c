@@ -455,12 +455,9 @@ gwsync_result_t gwsync_run(const gwsync_io_t *io, uint32_t image_len, sbl_t *sbl
         r->stock = true;
         memcpy(r->running.id, r->carried.id, sizeof r->running.id);
     }
-    if (r->answered && (carried_stock ? r->stock : !memcmp(r->running.id, r->carried.id, sizeof r->carried.id))) {
-        if (carried_stock) {
-            query_stock_mac(io, r->mac, &r->junk);
-            snprintf(r->msg, sizeof r->msg, "runs the carried stock gateway %s (%s)", r->running.version, want);
-            return done(io, r, GWSYNC_SAME, false);
-        }
+    // A stock image is never taken as there from the UART: our gateway answers 0x5316 with the stock version string
+    // too, and the stock one has no build info to ask. Its flash is compared through the debug port below instead.
+    if (!carried_stock && r->answered && !memcmp(r->running.id, r->carried.id, sizeof r->carried.id)) {
         // the same code (the image ID leaves the version string out): nothing to flash. What it reports is its own
         // build's version (pages 1-2), which can differ from the carried one's (#55): the carried one's if it does not say
         if (query_page(io, 1, &r->running, &r->junk, 1)) {
@@ -486,6 +483,19 @@ gwsync_result_t gwsync_run(const gwsync_io_t *io, uint32_t image_len, sbl_t *sbl
         char err[96] = "";
         step(io, "%s: through its debug port (cJTAG)", r->answered ? "another gateway" : "no answer");
         int written = io->cjtag_flash(io->ctx, image_len, r->mac, err, sizeof err);
+        if (written == 0 && carried_stock) {
+            // the flash already holds the stock image (pages 0-23 and page 31's code, compared through the debug
+            // port): only its identity is checked (the contact's MAC in the stock NV)
+            r->via_cjtag = true;
+            gwsync_result_t res = check_new(io, r, want, true);
+            if (res == GWSYNC_UPDATED) {
+                snprintf(r->msg, sizeof r->msg,
+                         "runs the carried stock gateway %s (%s), checked through the debug port", r->running.version,
+                         want);
+                return done(io, r, GWSYNC_SAME, false);
+            }
+            return res;
+        }
         if (written == 0) {
             r->via_cjtag = true;
             r->stock = carried_stock;
