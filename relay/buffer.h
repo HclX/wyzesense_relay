@@ -49,6 +49,7 @@ typedef struct {
     buffer_sensor_t sensors[BUFFER_SENSORS];
     unsigned sensor_count;
     char gateway_mac[9];
+    char ch554_mac[9];  // with translate_sync: the MAC the relay answers Get MAC with itself, as a dongle's CH554 does
     bool translate_sync;  // CH554 0x43 <-> 0x53 sync command translation for stock CC1310 gateway firmware
     bool sync_pending;
     uint8_t sync_cmd;

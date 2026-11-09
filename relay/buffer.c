@@ -346,6 +346,17 @@ void buffer_from_server(buffer_t *b, const uint8_t *data, size_t len)
             uint8_t cmd_lo = (uint8_t)p.cmd;
             if (cmd_lo == 0xFF) {
                 b->down_len -= n;  // 0x43FF ACK: already ACKed as 0x53FF on the UART when the reply arrived
+            } else if (cmd_lo == (uint8_t)HOST_GET_MAC && b->ch554_mac[0]) {
+                // Get MAC: on a dongle the CH554 answers it from its own memory, never the CC1310 (FACTS.md: the
+                // stock CC1310 answers zeros); the relay answers with the contact's MAC instead
+                b->down_len -= n;
+                uint8_t rsp[24];
+                size_t m = host_build(rsp, (uint16_t)((uint16_t)HOST_SYNC << 8 | (cmd_lo + 1)),
+                                      (const uint8_t *)b->ch554_mac, 8, true);
+                if (b->relay->state == RELAY_OPEN) {
+                    relay_on_uart(b->relay, rsp, m, b->now_ms);
+                }
+                memcpy(b->gateway_mac, b->ch554_mac, sizeof b->gateway_mac);
             } else {
                 host_build(b->down_pending + b->down_len - n, (uint16_t)((uint16_t)HOST_ASYNC << 8 | cmd_lo), p.payload,
                            p.len, false);

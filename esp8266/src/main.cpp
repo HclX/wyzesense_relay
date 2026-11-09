@@ -943,6 +943,9 @@ void gw_sync()
     gw_busy = false;
     gw_checked = true;
     buffer.translate_sync = gw_report.stock || settings.stock_gw;
+    if (buffer.translate_sync && strlen(gw_report.mac) == 8) {
+        memcpy(buffer.ch554_mac, gw_report.mac, sizeof buffer.ch554_mac);  // the contact's MAC, as Get MAC answer
+    }
     snprintf(last_log, sizeof last_log, "gateway: %s", gw_report.msg);
     sbl_drain(nullptr);
 }

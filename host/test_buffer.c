@@ -473,6 +473,17 @@ int main(void)
     CHECK(f.uart_len == 0);
     size_t n_got = to_server(got);
     CHECK(n_got == n_gw_ack + n_key && !memcmp(got, gw_ack, n_gw_ack) && !memcmp(got + n_gw_ack, key, n_key));
+    f.sent_len = f.uart_len = 0;
+
+    // With the contact's MAC known, Get MAC is answered by the relay itself, as a dongle's CH554 does (the stock
+    // CC1310 answers zeros): nothing on the UART, 0x4305 with the MAC to the host
+    memcpy(buf.ch554_mac, "7779749A", 9);
+    n_req = host_build(req43, HOST_GET_MAC, NULL, 0, false);
+    n_exp_rsp = host_build(exp_rsp43, 0x4305, (const uint8_t *)"7779749A", 8, true);
+    server_says(&r, req43, n_req, t_stock + 4400);
+    CHECK(f.uart_len == 0);
+    CHECK(to_server(got) == n_exp_rsp && !memcmp(got, exp_rsp43, n_exp_rsp));
+    CHECK(!strcmp(buf.gateway_mac, "7779749A"));
 
     printf("%d checks, %d failed\n", checks, failures);
     return failures != 0;
