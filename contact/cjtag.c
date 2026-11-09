@@ -1061,16 +1061,24 @@ static bool program_only(cjtag_t *c, uint32_t addr, const uint8_t *data, uint32_
 // (CCFG_TAP_DAP_0/1 unchanged, the CPU's on), IMAGE_VALID_CONF other than 0 or changed, a protection bit or an erase
 // lock (CCFG_PROT_*, ERASE_CONF unchanged), a bootloader that was on turned off. Only what the caller may change
 // (CCFG_MAY_*) may differ at all.
-enum { CCFG_MAY_BL = 1, CCFG_MAY_MAC = 2 };
+enum { CCFG_MAY_BL = 1, CCFG_MAY_MAC = 2, CCFG_MAY_POWER = 4 };
 
 static bool ccfg_safe(cjtag_t *c, const uint8_t *was, const uint8_t *now, unsigned may)
 {
     for (uint32_t o = 0; o < CJTAG_CCFG_SIZE; o++) {
         bool bl = o >= CJTAG_CCFG_BL_CONFIG && o < CJTAG_CCFG_BL_CONFIG + 4;
         bool mac = o >= CJTAG_CCFG_MAC && o < CJTAG_CCFG_MAC + 8;
-        if (now[o] != was[o] && !(bl && (may & CCFG_MAY_BL)) && !(mac && (may & CCFG_MAY_MAC))) {
+        bool pwr = (o >= CJTAG_CCFG_MODE_CONF_1 && o < CJTAG_CCFG_MODE_CONF_1 + 4) ||
+                   (o >= CJTAG_CCFG_MODE_CONF && o < CJTAG_CCFG_MODE_CONF + 4);
+        if (now[o] != was[o] && !(bl && (may & CCFG_MAY_BL)) && !(mac && (may & CCFG_MAY_MAC)) &&
+            !(pwr && (may & CCFG_MAY_POWER))) {
             return fail(c, "CCFG rule: only the field being written may change");
         }
+    }
+    // the power change: those two fields only, within their words
+    if ((le32(now + CJTAG_CCFG_MODE_CONF_1) ^ le32(was + CJTAG_CCFG_MODE_CONF_1)) & ~0x00F00000u ||
+        (le32(now + CJTAG_CCFG_MODE_CONF) ^ le32(was + CJTAG_CCFG_MODE_CONF)) & ~0x02000000u) {
+        return fail(c, "CCFG rule: only VDDR_EXT_LOAD and ALT_DCDC_VMIN may change");
     }
     if (((le32(now + CJTAG_CCFG_TAP_DAP_0) >> 16) & 0xFFu) != 0xC5u) {
         return fail(c, "CCFG rule: the CPU debug port must stay on");
@@ -1256,6 +1264,51 @@ int cjtag_write_page31_code(cjtag_t *c, const uint8_t *code, uint8_t *buf_4k, ui
             }
         }
         snprintf(c->error, sizeof c->error, "page 31 write failed and NOT restored: restore the backup");
+        return -1;
+    }
+    c->page31_crc = ~crc32_update(0xFFFFFFFFu, buf_4k, CJTAG_PAGE);
+    return 1;
+}
+
+int cjtag_set_vddr_boost(cjtag_t *c, bool on, uint8_t *buf_4k)
+{
+    const uint32_t ccfg_off = CJTAG_CCFG_ADDR - CJTAG_CCFG_PAGE_IDX * CJTAG_PAGE;
+    if (!c->has_ccfg_mac) {
+        fail(c, "no factory MAC in its CCFG: not touching page 31");
+        return -1;
+    }
+    if (!cjtag_dump_page(c, CJTAG_CCFG_PAGE_IDX, buf_4k)) {
+        return -1;
+    }
+    if (~crc32_update(0xFFFFFFFFu, buf_4k, CJTAG_PAGE) != c->page31_crc) {
+        fail(c, "page 31 changed since the connect: not writing");
+        return -1;
+    }
+    uint8_t *ccfg = buf_4k + ccfg_off, was[CJTAG_CCFG_SIZE];
+    memcpy(was, ccfg, sizeof was);
+    uint32_t mc1 = le32(ccfg + CJTAG_CCFG_MODE_CONF_1), mc = le32(ccfg + CJTAG_CCFG_MODE_CONF);
+    uint32_t want1 = (mc1 & ~0x00F00000u) | (on ? 0xCu : 0x8u) << 20;
+    uint32_t want = on ? mc & ~0x02000000u : mc | 0x02000000u;
+    if (want1 == mc1 && want == mc) {
+        return 0;
+    }
+    put_le32_(ccfg + CJTAG_CCFG_MODE_CONF_1, want1);
+    put_le32_(ccfg + CJTAG_CCFG_MODE_CONF, want);
+    if (!ccfg_safe(c, was, ccfg, CCFG_MAY_POWER)) {
+        return -1;
+    }
+    if (!flash_raw(c, CJTAG_CCFG_PAGE_IDX, buf_4k)) {
+        // the page as it was, at once: page 31 erased and not written leaves the chip without its CCFG and MAC
+        char why[sizeof c->error];
+        snprintf(why, sizeof why, "%s", c->error);
+        memcpy(ccfg, was, sizeof was);
+        for (int i = 0; i < 3; i++) {
+            if (flash_raw(c, CJTAG_CCFG_PAGE_IDX, buf_4k)) {
+                snprintf(c->error, sizeof c->error, "page 31 restored; the VDDR write failed: %.40s", why);
+                return -1;
+            }
+        }
+        snprintf(c->error, sizeof c->error, "VDDR write failed and page 31 NOT restored: restore the backup");
         return -1;
     }
     c->page31_crc = ~crc32_update(0xFFFFFFFFu, buf_4k, CJTAG_PAGE);

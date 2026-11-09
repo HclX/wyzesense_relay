@@ -54,6 +54,7 @@ bool contact_nv_import(const gwnv_doc_t *doc, char *msg, size_t msg_cap);
 
 // Bring-up: one page 0-30 through the debug port (page 31 never); 1 written, -1 failed (err). mac: the CCFG MAC.
 int contact_cjtag_page(uint32_t page, const uint8_t *data, char *mac, char *err, size_t cap);
+int contact_vddr(int on, const char *want_mac, int *state, char *mac, char *err, size_t cap);
 // Bring-up: a restart of the contact and its UART output from then for ms (send written at send_at_ms)
 size_t contact_capture(uint32_t ms, const uint8_t *send, size_t n, uint32_t send_at_ms, uint8_t *out, size_t cap);
 // Bring-up: register samples and a memory read through the debug port, the CPU left running (text)

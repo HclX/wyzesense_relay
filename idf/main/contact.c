@@ -544,6 +544,68 @@ int contact_cjtag_page(uint32_t page, const uint8_t *data, char *mac, char *err,
     return r;
 }
 
+// The VDDR boost through the debug port (cjtag_set_vddr_boost; on: 1 on, 0 off, -1 only read): want_mac must be the
+// contact's CCFG MAC, else nothing is written. Its state after it in *state (1 on, 0 off, -1 other). The contact
+// restarts after a write. 1 written, 0 already so / read, -1 refused or failed (err).
+int contact_vddr(int on, const char *want_mac, int *state, char *mac, char *err, size_t cap)
+{
+    static cjtag_t cj;
+    static uint8_t buf[CJTAG_PAGE];
+    const int tck = OWS_PIN_CONTACT_TCK, tms = OWS_PIN_CONTACT_TMS;
+    *state = -1;
+    if (tck < 0 || tms < 0) {
+        snprintf(err, cap, "no debug port wired (M, C)");
+        return -1;
+    }
+    cj_pins_t pins = {tck, tms};
+    gpio_reset_pin(tck);
+    gpio_set_direction(tck, GPIO_MODE_OUTPUT);
+    gpio_set_level(tck, 1);
+    gpio_reset_pin(tms);
+    gpio_set_pull_mode(tms, GPIO_PULLUP_ONLY);
+    gpio_set_direction(tms, GPIO_MODE_INPUT_OUTPUT);
+    gpio_set_level(tms, 1);
+    cjtag_io_t io = {cj_set_pins, cj_set_tms_dir, cj_get_tms, cj_delay, &pins};
+    bool connected = false;
+    for (int i = 0; i < 3 && !connected; i++) {
+        cjtag_init(&cj, &io);
+        connected = cjtag_connect(&cj, true);
+        if (!connected) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+    }
+    int r = -1;
+    if (!connected) {
+        snprintf(err, cap, "%s", cj.error);
+    } else {
+        memcpy(mac, cj.mac, 9);
+        if (on >= 0 && (!want_mac || strcmp(want_mac, cj.mac) != 0)) {
+            snprintf(err, cap, "the contact is %s, not %s: not written", cj.mac, want_mac ? want_mac : "(none)");
+        } else {
+            r = on >= 0 ? cjtag_set_vddr_boost(&cj, on != 0, buf) : 0;
+            if (r < 0) {
+                snprintf(err, cap, "%s", cj.error);
+            }
+            uint8_t cc[16];
+            if (cjtag_mem_read_block(&cj, CJTAG_CCFG_ADDR, cc, sizeof cc)) {
+                uint32_t mc1 = (uint32_t)cc[4] | (uint32_t)cc[5] << 8 | (uint32_t)cc[6] << 16 | (uint32_t)cc[7] << 24;
+                uint32_t mc =
+                    (uint32_t)cc[12] | (uint32_t)cc[13] << 8 | (uint32_t)cc[14] << 16 | (uint32_t)cc[15] << 24;
+                bool b_on = ((mc1 >> 20) & 0xF) == 0xC && !(mc & 0x02000000u);
+                bool b_off = ((mc1 >> 20) & 0xF) == 0x8 && (mc & 0x02000000u);
+                *state = b_on ? 1 : b_off ? 0 : -1;
+            }
+        }
+        cjtag_release_and_reset(&cj);
+    }
+    line_free(tck);
+    line_free(tms);
+    if (r > 0) {
+        contact_reset();  // the new CCFG takes effect at a start
+    }
+    return r;
+}
+
 // Bring-up: page 31 read (op 0, into page) or its code area written from code (op 1; the CCFG kept, cjtag.c), page
 // receiving the page as it was. 1/0/-1 as cjtag_write_page31_code (a read: 1).
 int contact_page31(int op, const uint8_t *code, uint8_t *page, char *err, size_t cap)

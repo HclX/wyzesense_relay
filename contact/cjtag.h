@@ -21,6 +21,8 @@
 #define CJTAG_FCFG1_ADDR       0x50001000u
 #define CJTAG_FCFG1_SIZE       0x00000400u  // 1 KB factory configuration
 #define CJTAG_CCFG_SIZE        88u          // 0x0001FFA8..0x0001FFFF
+#define CJTAG_CCFG_MODE_CONF_1 0x04u        // ALT_DCDC_VMIN [23:20]
+#define CJTAG_CCFG_MODE_CONF   0x0Cu        // VDDR_EXT_LOAD [25]
 #define CJTAG_CCFG_MAC         0x24u        // offsets in the CCFG: Wyze's ASCII MAC (8 bytes)
 #define CJTAG_CCFG_BL_CONFIG   0x30u
 #define CJTAG_CCFG_TAP_DAP_0   0x3Cu
@@ -96,6 +98,11 @@ int cjtag_write_image(cjtag_t *c, cjtag_image_fn image, void *ctx, uint32_t imag
 // hold a factory MAC, the CPU debug port enabled and a valid image; after the erase the page is written and verified
 // whole, and on a failure written back as it was. Returns 1 written, 0 already so, -1 refused or failed (c->error).
 int cjtag_set_backdoor(cjtag_t *c, uint8_t pin, uint8_t *buf_4k);
+
+// The VDDR boost for +14 dBm (TI's CCFG_FORCE_VDDR_HH, as the dongle's CCFG): on, MODE_CONF.VDDR_EXT_LOAD 0 and
+// MODE_CONF_1.ALT_DCDC_VMIN 0xC; off, 1 and 0x8 (a coin-cell sensor's). Nothing else in the CCFG changes (ccfg_safe);
+// an erase and rewrite of page 31, put back as it was on a failure. 1 written, 0 already so, -1 refused / failed.
+int cjtag_set_vddr_boost(cjtag_t *c, bool on, uint8_t *buf_4k);
 // Fills a blank CCFG MAC slot (0x1FFCC, 8 bytes, all FF) with the unit's own MAC, the one in page 29: newer units keep
 // it there only (the user's decision, 2026-11-07, for v1 contact 77A9B885). Program only, never an erase (FF -> the
 // MAC needs no 0 -> 1 bit); page 31 read twice before and verified whole after. Returns 1 written, 0 already so, -1

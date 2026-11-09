@@ -695,6 +695,26 @@ int main(void)
     CHECK(memcmp(sim.flash + (size_t)CJTAG_CCFG_PAGE_IDX * CJTAG_PAGE, orig_page31, CJTAG_PAGE) == 0);
     erases0 = sim.erases;
     CHECK(cjtag_set_backdoor(&cj, 1, page_buf) == 0 && sim.erases == erases0);  // already so: no erase
+    {
+        // the VDDR boost: exactly the two fields change, on and off; then the simulated page put back as it was
+        static uint8_t page31_before[4096];
+        memcpy(page31_before, sim.flash + 0x1F000, sizeof page31_before);
+        const uint8_t *now = sim.flash + 0x1FFA8;
+        const uint8_t *before = page31_before + 0xFA8;
+#define W32(p, o) \
+    ((uint32_t)(p)[o] | (uint32_t)(p)[(o) + 1] << 8 | (uint32_t)(p)[(o) + 2] << 16 | (uint32_t)(p)[(o) + 3] << 24)
+        CHECK(cjtag_set_vddr_boost(&cj, true, page_buf) == 1);
+        CHECK(((W32(now, 4) >> 20) & 0xF) == 0xC && !(W32(now, 12) & 0x02000000u));
+        CHECK(!((W32(now, 4) ^ W32(before, 4)) & ~0x00F00000u) && !((W32(now, 12) ^ W32(before, 12)) & ~0x02000000u));
+        CHECK(!memcmp(now + 16, before + 16, 88 - 16) && !memcmp(now, before, 4) && !memcmp(now + 8, before + 8, 4));
+        CHECK(!memcmp(sim.flash + 0x1F000, page31_before, 0xFA8));  // the page's code untouched
+        CHECK(cjtag_set_vddr_boost(&cj, true, page_buf) == 0);
+        CHECK(cjtag_set_vddr_boost(&cj, false, page_buf) == 1);
+        CHECK(((W32(now, 4) >> 20) & 0xF) == 0x8 && (W32(now, 12) & 0x02000000u));
+#undef W32
+        memcpy(sim.flash + 0x1F000, page31_before, sizeof page31_before);
+        CHECK(cjtag_connect(&cj, true));  // page 31 as at the start again (its CRC taken anew)
+    }
     CHECK(cjtag_flash_page(&cj, 3, new_page, false));  // the new page-31 CRC is the one checked now
 
     sim.fail_programs = 1;  // erased, then the write fails: the page goes back as it was

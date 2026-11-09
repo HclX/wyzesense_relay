@@ -496,6 +496,35 @@ static esp_err_t debug_cjtag_page_post(httpd_req_t *req)
     return httpd_resp_sendstr(req, out);
 }
 
+// POST /contact/vddr?on=1|0&mac=<the contact's MAC>: the VDDR boost in its CCFG (cjtag_set_vddr_boost, the user's
+// OK 2026-11-08); on=-1 (or none) only reads it. Answers its state after it.
+static esp_err_t contact_vddr_post(httpd_req_t *req)
+{
+    if (!require_auth(req) || refused_relay_disabled(req) || refused_busy(req)) {
+        return ESP_OK;
+    }
+    char query[64] = "", v[8] = "", want[12] = "", err[120] = "", mac[9] = "", out[200];
+    httpd_req_get_url_query_str(req, query, sizeof query);
+    int on = httpd_query_key_value(query, "on", v, sizeof v) == ESP_OK ? atoi(v) : -1;
+    bool has_mac = httpd_query_key_value(query, "mac", want, sizeof want) == ESP_OK;
+    if (!contact_uart_take(2000)) {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "the contact is busy");
+    }
+    int state = -1;
+    int r = contact_vddr(on, has_mac ? want : NULL, &state, mac, err, sizeof err);
+    contact_uart_give();
+    snprintf(out, sizeof out, "%s (contact %s): VDDR boost %s%s%s\n",
+             r > 0    ? "written"
+             : r == 0 ? "unchanged"
+                      : "refused/failed",
+             mac[0] ? mac : "?",
+             state == 1   ? "on"
+             : state == 0 ? "off"
+                          : "other",
+             r < 0 ? ": " : "", r < 0 ? err : "");
+    return httpd_resp_sendstr(req, out);
+}
+
 static esp_err_t debug_capture_post(httpd_req_t *req)
 {
     if (!require_auth(req) || refused_relay_disabled(req) || refused_busy(req)) {
@@ -912,6 +941,7 @@ void web_start(void)
         {.uri = "/contact/console", .method = HTTP_POST, .handler = contact_console_post},
         {.uri = "/debug/cjtag_page", .method = HTTP_POST, .handler = debug_cjtag_page_post},
         {.uri = "/debug/capture", .method = HTTP_POST, .handler = debug_capture_post},
+        {.uri = "/contact/vddr", .method = HTTP_POST, .handler = contact_vddr_post},
         {.uri = "/debug/sample", .method = HTTP_POST, .handler = debug_sample_post},
         {.uri = "/debug/page31", .method = HTTP_GET, .handler = debug_page31_handler},
         {.uri = "/debug/page31", .method = HTTP_POST, .handler = debug_page31_handler},
