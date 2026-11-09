@@ -99,11 +99,12 @@ static int run_pack_cli(const char *dump_path, const char *out_path, const char 
     stock_pack_init(&pack, p31, mem_write, &m);
     uint8_t buf[1024];
     size_t n;
-    while ((n = fread(buf, 1, sizeof buf, in)) > 0) {
-        if (!stock_pack_feed(&pack, buf, n)) {
+    do {
+        n = fread(buf, 1, sizeof buf, in);
+        if (n && !stock_pack_feed(&pack, buf, n)) {
             break;
         }
-    }
+    } while (n == sizeof buf);  // a short read: the end (or an error): no read after it
     fclose(in);
     char err[160] = "";
     if (!stock_pack_finish(&pack, expect_ptr, m.part, NULL, err, sizeof err)) {
@@ -178,11 +179,11 @@ int main(int argc, char **argv)
     // 3. Build a synthetic 128 KB dump: pages 0-23 pattern, pages 24-29 0x00, page 30 NV, page 31 code + CCFG
     static uint8_t dump[STOCK_DUMP_LEN];
     static uint8_t expected_packed[STOCK_IMAGE_LEN];
-    for (size_t i = 0; i < 24 * 4096; i++) {
+    for (size_t i = 0; i < (size_t)24 * 4096; i++) {
         dump[i] = (uint8_t)((i * 73u + 19u) & 0xFFu);
     }
-    memset(dump + 24 * 4096, 0x00, 6 * 4096);    // pages 24-29: 24 KB of 0x00
-    memset(dump + STOCK_NV_OFFSET, 0xA5, 4096);  // page 30: per-dongle NV (must be skipped)
+    memset(dump + (size_t)24 * 4096, 0x00, (size_t)6 * 4096);  // pages 24-29: 24 KB of 0x00
+    memset(dump + STOCK_NV_OFFSET, 0xA5, 4096);                // page 30: per-dongle NV (must be skipped)
     for (size_t i = 0; i < STOCK_PAGE31_CODE_LEN; i++) {
         dump[STOCK_PAGE31_OFFSET + i] = (uint8_t)((i * 29u + 7u) & 0xFFu);
     }

@@ -121,6 +121,10 @@ void stock_sha256_update(stock_sha256_t *s, const uint8_t *data, size_t len)
 
 void stock_sha256_final(stock_sha256_t *s, uint8_t out[32])
 {
+    if (s->buf_len >= sizeof s->buf) {  // never (update leaves it below 64), but keeps the index provably in range
+        sha256_block(s->state, s->buf);
+        s->buf_len = 0;
+    }
     s->buf[s->buf_len++] = 0x80u;
     if (s->buf_len > 56) {
         memset(s->buf + s->buf_len, 0, 64u - s->buf_len);
@@ -143,7 +147,7 @@ void stock_sha256_final(stock_sha256_t *s, uint8_t out[32])
 void stock_sha256_hex(const uint8_t sha256[32], char hex_out[65])
 {
     static const char hex[] = "0123456789abcdef";
-    for (int i = 0; i < 32; i++) {
+    for (size_t i = 0; i < 32; i++) {
         hex_out[2 * i] = hex[sha256[i] >> 4];
         hex_out[2 * i + 1] = hex[sha256[i] & 0x0Fu];
     }
@@ -152,7 +156,8 @@ void stock_sha256_hex(const uint8_t sha256[32], char hex_out[65])
 
 void stock_hdr_encode(uint8_t out[STOCK_HDR_LEN], const uint8_t sha256[32])
 {
-    memcpy(out, STOCK_HDR_MAGIC, 8);
+    static const uint8_t magic[8] = {'O', 'W', 'S', 'S', 'T', 'O', 'C', 'K'};  // STOCK_HDR_MAGIC, no NUL
+    memcpy(out, magic, sizeof magic);
     put_le32(out + 8, STOCK_HDR_FORMAT);
     put_le32(out + 12, STOCK_IMAGE_LEN);
     memcpy(out + 16, sha256 ? sha256 : k_stock_image_sha256, 32);
