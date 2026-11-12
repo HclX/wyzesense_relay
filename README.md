@@ -110,7 +110,7 @@ updating the relay (`/ota`, or the page's upload) is the whole update. Measured 
 relaying with a reflash, 8 s without.
 
 ```
-curl http://<ip>/api/status                                 # status (JSON): relay, gwsync, bridge, sensors
+curl http://<ip>/api/status                                 # status (JSON): chip, board, relay, gwsync, bridge, sensors
 curl -u admin:<pass> -X POST http://<ip>/contact/reset
 curl -u admin:<pass> -X POST 'http://<ip>/contact/gwsync?skip=1'          # pause startup auto-sync (skip=0 resumes)
 curl -u admin:<pass> http://<ip>/contact/nv > nv.json                     # export network + paired sensors
@@ -121,6 +121,11 @@ curl -u admin:<pass> --data-binary @build/fw/firmware/gateway-contact-v1-app.bin
 curl -u admin:<pass> -F image=@FLASH.bin http://<ip>/contact/stock        # store stock v1.8 gateway in flash partition
 curl -u admin:<pass> --data-binary @esp32/idf/build/ows_relay.bin http://<ip>/ota   # this firmware; it restarts
 ```
+
+`GET /api/status` reports `"chip"` (`"ESP32"`, `"ESP32-S3"`, `"ESP8266"`) alongside `"board"` (shown in the page title
+as `name · chip (board)`): set at build time via `OWS_BOARD` (`CONFIG_OWS_BOARD` in `sdkconfig` or `-D OWS_BOARD=<board>`
+on ESP-IDF, defaulting to `"devkit"` on ESP32-S3 and `"lolin32"` on classic ESP32; `${this.board}` from
+`esp8266/platformio.ini` on ESP8266, defaulting to `"d1_mini"`).
 
 `/contact/flash` streams pages 0-29 directly to the contact via `sbl_stream_*` on both ESP-IDF and ESP8266 (zero 120 KB
 RAM buffer): it takes the UART from the relay, enters the bootloader (`OWS_SUB_ENTER_SBL` or `R` + `S`), checks its CCFG
@@ -271,7 +276,7 @@ curl -u admin:<pass> -F image=@esp32/esp8266/.pio/build/d1_mini/firmware.bin htt
 ```
 
 Its web page (`http://<ip>/`, the one both relays serve: `esp32/web/index.html`): status (refreshed every 2 s from
-`GET /api/status`, including per-sensor `mac`, `type`, `seen_s`, `rssi`, `bat_mv`), radio maintenance (reset, `gwsync`
+`GET /api/status`, including `chip`, `board`, and per-sensor `mac`, `type`, `seen_s`, `rssi`, `bat_mv`), radio maintenance (reset, `gwsync`
 pause/resume, `nv.json` import/export, and custom radio flash), ESP OTA update, and setup. Both ESP-IDF and ESP8266
 stream contact reflashes page by page via `sbl_stream_*` (`curl -u admin:<pass> -F image=@gateway-contact-v1-app.bin
 "http://<ip>/contact/flash?mac=<MAC>&nv=wipe&keep=1"`), and both try 4-wire software SBL (`OWS_SUB_ENTER_SBL`) before

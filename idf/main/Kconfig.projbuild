@@ -1,0 +1,12 @@
+menu "OpenWyzeSense Relay"
+
+    config OWS_BOARD
+        string "Board identifier reported in /api/status"
+        default "devkit" if IDF_TARGET_ESP32S3
+        default "lolin32" if IDF_TARGET_ESP32
+        default "generic"
+        help
+            Short board identifier returned in GET /api/status ("board")
+            and shown alongside the chip in the web UI title.
+
+endmenu
