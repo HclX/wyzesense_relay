@@ -356,6 +356,23 @@ static bool stock_part_read(void *ctx, uint32_t off, uint8_t *buf, size_t len)
     return esp_partition_read(p, off, buf, len) == ESP_OK;
 }
 
+#define STOCK_PART_OFFSET  0x320000u  // idf/partitions.csv: right after ota_1 (0x1a0000 + 0x180000)
+#define STOCK_PART_SIZE    0x20000u
+#define STOCK_PART_SUBTYPE 0x40
+
+// A relay updated over OTA from before gwstock was in partitions.csv lacks the entry at 0x8000; register the same
+// 0x320000 region in RAM so OTA relays get gwstock without rewriting sector 0x8000.
+static const esp_partition_t *find_stock_part(void)
+{
+    const esp_partition_t *p =
+        esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, STOCK_PART_LABEL);
+    if (!p) {
+        esp_partition_register_external(NULL, STOCK_PART_OFFSET, STOCK_PART_SIZE, STOCK_PART_LABEL,
+                                        ESP_PARTITION_TYPE_DATA, STOCK_PART_SUBTYPE, &p);
+    }
+    return p;
+}
+
 static void stock_part_probe(char *err, size_t err_cap)
 {
     if (s_stock_mmap) {
@@ -364,11 +381,10 @@ static void stock_part_probe(char *err, size_t err_cap)
     }
     s_stock_probed = true;
     s_stock_valid = false;
-    s_stock_part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, STOCK_PART_LABEL);
+    s_stock_part = find_stock_part();
     if (!s_stock_part || s_stock_part->size < STOCK_PART_LEN) {
         if (err && err_cap) {
-            snprintf(err, err_cap,
-                     "no gwstock partition in the partition table: flash the full relay image over USB first");
+            snprintf(err, err_cap, "gwstock flash region (0x320000..0x340000) unavailable");
         }
         return;
     }
@@ -431,9 +447,9 @@ static bool stock_part_write(void *ctx, uint32_t off, const uint8_t *data, size_
 
 bool contact_stock_begin(char *msg, size_t cap)
 {
-    s_stock_part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, STOCK_PART_LABEL);
+    s_stock_part = find_stock_part();
     if (!s_stock_part || s_stock_part->size < STOCK_PART_LEN) {
-        snprintf(msg, cap, "no gwstock partition in the partition table: flash the full relay image over USB first");
+        snprintf(msg, cap, "gwstock flash region (0x320000..0x340000) unavailable");
         return false;
     }
     if (contact_stock_gw_available()) {
