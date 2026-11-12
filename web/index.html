@@ -44,7 +44,7 @@ main{padding:18px 16px 40px}
 @media(min-width:660px){.split{grid-template-columns:1fr 1fr}}
 @media(max-width:520px){
 .wrow{gap:6px}
-.wrow select.wsel{width:82px}
+.wrow select.wsel{width:106px}
 .wrow input.wcol{width:68px}
 .wpad{width:30px}
 .wgpio{min-width:56px;padding:2px 4px}
@@ -99,7 +99,7 @@ overflow:hidden;text-overflow:ellipsis;padding-bottom:2px}
 .wdot{flex:none;width:12px;height:12px;border-radius:50%;border:1px solid var(--fg)}
 .wgpio{flex:none;min-width:64px;text-align:center;border:1px solid var(--acc);border-radius:5px;padding:2px 6px;
 font-size:13px;background:var(--card)}
-.wrow select.wsel{flex:none;width:96px;margin:0;padding:3px 4px}
+.wrow select.wsel{flex:none;width:120px;margin:0;padding:3px 4px}
 .wrow input.wcol{flex:none;width:80px;margin:0;padding:3px 6px}
 table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
 th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
@@ -297,10 +297,12 @@ row.tds.forEach((td,k)=>{setText(td,vals[k]);const cls=k==2&&x.rssi<-85?'weak':'
 if(tb.children[i]!==row.tr)tb.insertBefore(row.tr,tb.children[i]||null);seen.add(x.mac)});
 for(const [mac,row] of sensorRows)if(!seen.has(mac)){row.tr.remove();sensorRows.delete(mac)}}
 // Wire colours offered (any other name: "custom…"); text in black or white, whichever reads on it
-const COLOURS=['red','black','white','yellow','green','blue','orange','purple','brown','grey','pink','cyan'];
+const COLOURS=['red','black','white','yellow','green','blue','orange','purple','brown','grey','pink','cyan','white-orange','white-green','white-blue','white-brown'];
 const LIGHT={white:1,yellow:1,orange:1,pink:1,cyan:1,grey:1,gray:1,lime:1,aqua:1,gold:1,silver:1,beige:1,ivory:1,khaki:1};
-function validColour(c){return !!c&&c.length<16&&!/["'<>;\\/]/.test(c)&&CSS.supports('color',c)}
-function colourStyle(c){return validColour(c)?'background:'+c+';color:'+(LIGHT[c.toLowerCase()]?'#000':'#fff'):''}
+function colourParts(c){if(!c||c.length>=16||/["'<>;\\/]/.test(c))return null;if(CSS.supports('color',c))return [c];const p=c.split('-');return p.length==2&&p.every(x=>x&&CSS.supports('color',x))?p:null}
+function validColour(c){return !!colourParts(c)}
+function colourBg(c){const p=colourParts(c);return !p?'':p.length==1?p[0]:'repeating-linear-gradient(135deg,'+p[0]+' 0 3px,'+p[1]+' 3px 6px)'}
+function colourStyle(c){const p=colourParts(c);if(!p)return '';const bg=p.length==1?p[0]:'linear-gradient(135deg,'+p[0]+' 68%,'+p[1]+' 68%)';return 'background:'+bg+';background-color:'+p[0]+';color:'+(LIGHT[p[0].toLowerCase()]?'#000':'#fff')}
 function colourSelect(k,cur){const v=cur||'',known=COLOURS.includes(v),custom=v&&!known,
 esc=t=>String(t).replace(/[&<>"]/g,c=>'&#'+c.charCodeAt(0)+';');
 return '<select class=wsel data-k='+k+' style="'+colourStyle(v)+'" aria-label="wire colour">'+
@@ -334,7 +336,7 @@ st?[['+',g(p.power),'supply (clip)','power'],['−','GND','ground (clip)','minus
 ['T',g(p.t),'output (DIO0)','t'],['M',g(p.m),'TMSC','m'],['C',g(p.c),'TCKC','c'],['S',g(p.s),'RESET_N','s']];
 let v=rows.map(r=>{const col=w[r[3]]||'';
 return '<div class=wrow><span class=wpad>'+r[0]+'</span><span class=wdesc>'+r[2]+'</span>'+
-'<span class=wdot style="background:'+(validColour(col)?col:'transparent')+'"></span><span class=wgpio>'+r[1]+'</span>'+
+'<span class=wdot style="background:'+(colourBg(col)||'transparent')+'"></span><span class=wgpio>'+r[1]+'</span>'+
 colourSelect(r[3],col)+'</div>'}).join('');
 v+='<p class=hint>'+(st?
 'The sensor’s <b>+</b> and <b>−</b> clipped to its battery holder (battery out); the two probes on its pads: '+
