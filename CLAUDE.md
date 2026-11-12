@@ -59,7 +59,8 @@ tools/pio.sh run
 The relay can run the stock Wyze v1.8 dongle gateway firmware on its v1 contact board (Setup: gateway firmware `ows` / `stock`).
 - **Dedicated flash partition (never embedded in the app):**
   - ESP32 / ESP32-S3 (`idf/partitions.csv`): `gwstock` (`data`, subtype `0x40`, offset `0x320000`, size `0x20000`),
-    memory-mapped with `esp_partition_mmap`.
+    memory-mapped with `esp_partition_mmap` (registered at runtime via `esp_partition_register_external` on relays
+    OTA-updated from pre-`gwstock` partition tables).
   - ESP8266 (`esp8266/src/main.cpp`): start of the unused filesystem flash area (`_FS_start`, offset `0x300000` on
     4 MB D1 mini per `eagle.flash.4m1m.ld`), accessed via `ESP.flashEraseSector` / `ESP.flashWrite` / `ESP.flashRead`.
 - **Stored format (`contact/stock_image.h`):** 48-byte `OWSSTOCK` header (`magic[8] = "OWSSTOCK"`, `format = 1`,

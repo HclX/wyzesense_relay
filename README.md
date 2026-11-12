@@ -147,8 +147,9 @@ updates until a full USB flash erase.
   `ab9c235bbce832a7dc74d67092199ba4108d8d24a33209c781bf483b85684ea0` before writing the partition, then reads it back
   and verifies it. `GET /api/status` reports `"stock_stored": true|false` (the relay never serves the stored image
   back). Once stored, select **Stock Wyze v1.8 (dongle gateway)** in Setup (`gw_fw=stock`); at startup `gwsync` writes
-  pages 0–29 and page 31's code through the debug port (`cJTAG` on `M`/`C`). Existing ESP32 / ESP32-S3 relays built
-  before the `gwstock` partition was added need a one-time full USB flash so their partition table includes `gwstock`.
+  pages 0–29 and page 31's code through the debug port (`cJTAG` on `M`/`C`). Existing ESP32 / ESP32-S3 relays updated
+  over `/ota` from firmware built before `gwstock` was added to `idf/partitions.csv` register the `0x320000` flash
+  region at runtime automatically (no USB reflash needed).
 - **Local pre-population (`tools/stock_partition.py`)**: build the partition image on a PC and flash it directly with
   `esptool.py`:
 
