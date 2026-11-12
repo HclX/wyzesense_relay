@@ -12,10 +12,9 @@ typedef struct {
     char ssid[33], pass[65];  // Wi-Fi; an empty SSID: not set up yet (the setup access point)
     char url[128];            // wyzesense2mqtt-rs's bridge: ws://host:port/ws/bridge
     char token[64];           // its bridge token, or empty
-    char admin_pass[64];
-    char wire_r[16],
-        wire_t
-            [16];  // the colours of the harness's R and T wires (the station's hand probes), as named      // HTTP admin password for mutating endpoints (falls back to token when empty)
+    char admin_pass[64];      // HTTP admin password for mutating endpoints (falls back to token when empty)
+    char wire_power[16], wire_minus[16], wire_r[16], wire_t[16], wire_m[16], wire_c[16],
+        wire_s[16];         // the colours of the harness's wires, as named (POST /wires)
     bool skip_gwsync;       // pause startup CC1310 auto-reflash (safe mode / custom radio builds)
     bool stock_gw;          // carry/sync stock Wyze v1.8 gateway image instead of OWS gateway image
     bool rig;               // the battery rig (#95): OWS_PIN_RIG_SUPPLY supplies the contact (rig_task.c)

@@ -37,11 +37,15 @@ struct Settings {
     char ssid[33], pass[65], url[128], token[64], admin_pass[64];
     uint8_t skip_gwsync;
     uint8_t stock_gw;
+    struct {
+        char power[16], minus[16], r[16], t[16], m[16], c[16], s[16];
+    } wires;  // the harness wire colours (POST /wires)
 };
 constexpr uint32_t kMagicV1 = 0x4F575331;  // "OWS1" (without admin_pass, skip_gwsync)
 constexpr uint32_t kMagicV2 = 0x4F575332;  // "OWS2" (without skip_gwsync)
 constexpr uint32_t kMagicV3 = 0x4F575333;  // "OWS3" (without stock_gw)
-constexpr uint32_t kMagic = 0x4F575334;    // "OWS4"
+constexpr uint32_t kMagicV4 = 0x4F575334;  // "OWS4" (without wire colours)
+constexpr uint32_t kMagic = 0x4F575335;    // "OWS5"
 constexpr uint32_t kApDelayMs = 120000;
 constexpr uint32_t kApTimeoutMs = 900000;
 constexpr uint32_t kBackoffBaseMs = 1000;
@@ -160,24 +164,34 @@ void settings_load()
 {
     EEPROM.begin(sizeof(Settings));
     EEPROM.get(0, settings);
-    if (settings.magic == kMagicV1) {
+    uint32_t magic = settings.magic;
+    if (magic == kMagicV1) {
         memset(settings.admin_pass, 0, sizeof settings.admin_pass);
         settings.skip_gwsync = 0;
         settings.stock_gw = 0;
         settings.magic = kMagic;
-    } else if (settings.magic == kMagicV2) {
+    } else if (magic == kMagicV2) {
         settings.skip_gwsync = 0;
         settings.stock_gw = 0;
         settings.magic = kMagic;
-    } else if (settings.magic == kMagicV3) {
+    } else if (magic == kMagicV3) {
         settings.stock_gw = 0;
         settings.magic = kMagic;
-    } else if (settings.magic != kMagic) {
+    } else if (magic == kMagicV4) {
+        settings.magic = kMagic;  // the fields before wires keep their offsets
+    } else if (magic != kMagic) {
         memset(&settings, 0, sizeof settings);
+    }
+    if (magic != kMagic) {  // no wire colours were stored before OWS5
+        memset(&settings.wires, 0, sizeof settings.wires);
     }
     settings.ssid[sizeof settings.ssid - 1] = settings.pass[sizeof settings.pass - 1] = 0;
     settings.url[sizeof settings.url - 1] = settings.token[sizeof settings.token - 1] = 0;
     settings.admin_pass[sizeof settings.admin_pass - 1] = 0;
+    for (char *f : {settings.wires.power, settings.wires.minus, settings.wires.r, settings.wires.t, settings.wires.m,
+                    settings.wires.c, settings.wires.s}) {
+        f[15] = 0;
+    }
     for (char *f : {settings.ssid, settings.url, settings.token}) {  // saved before the page trimmed them
         String v(f);
         v.trim();
@@ -292,6 +306,46 @@ void setup_post()
     server.send(200, "text/plain", "saved; restarting");
     delay(500);
     ESP.restart();
+}
+
+// POST /wires: the harness wire colours (power, minus, r, t, m, c, s); "-" clears, a missing field is unchanged
+void wires_post()
+{
+    if (!require_auth()) {
+        return;
+    }
+    struct Wire {
+        const char *key;
+        char *field;
+    };
+    const Wire ws[] = {
+        {"power", settings.wires.power}, {"minus", settings.wires.minus}, {"r", settings.wires.r},
+        {"t", settings.wires.t},         {"m", settings.wires.m},         {"c", settings.wires.c},
+        {"s", settings.wires.s},
+    };
+    bool any = false;
+    for (const Wire &w : ws) {
+        if (!server.hasArg(w.key)) {
+            continue;
+        }
+        String v = server.arg(w.key);
+        v.trim();
+        if (v.length() >= 16) {
+            server.send(400, "text/plain", "colour too long");
+            return;
+        }
+        strcpy(w.field, v == "-" ? "" : v.c_str());
+        any = true;
+    }
+    if (!any) {
+        server.send(400, "text/plain", "power=..&minus=..&r=..&t=..&m=..&c=..&s=..");
+        return;
+    }
+    if (!settings_save()) {
+        server.send(500, "text/plain", "saving failed");
+        return;
+    }
+    server.send(200, "text/plain", "wire colours saved");
 }
 
 void contact_gwsync_post()
@@ -1187,6 +1241,9 @@ void api_status()
     static const char *results[] = {"same", "updated", "failed", "refused"};
     const char *cmac = sbl.mac[0] ? sbl.mac : (gw_report.mac[0] ? gw_report.mac : buffer.gateway_mac);
     b += ",\"log\":" + js(last_log) + ",\"flash\":" + js(last_flash) + ",\"contact_mac\":" + js(cmac);
+    b += ",\"wires\":{\"power\":" + js(settings.wires.power) + ",\"minus\":" + js(settings.wires.minus) +
+         ",\"r\":" + js(settings.wires.r) + ",\"t\":" + js(settings.wires.t) + ",\"m\":" + js(settings.wires.m) +
+         ",\"c\":" + js(settings.wires.c) + ",\"s\":" + js(settings.wires.s) + "}";
     b += ",\"build\":" + js(kRelayTag + 18) + ",\"chip\":\"ESP8266\",\"fw_file\":\".pio/build/d1_mini/firmware.bin\"";
     b += ",\"gw\":{\"checked\":" + String(gw_checked ? "true" : "false") + ",\"result\":\"" +
          results[gw_report.result] + "\",\"msg\":" + js(gw_report.msg) + ",\"steps\":" + js(gw_steps_text().c_str()) +
@@ -1308,6 +1365,7 @@ void setup()
     server.on("/setup", HTTP_GET, page_index);  // the address the setup access point's report gives
     server.on("/api/status", HTTP_GET, api_status);
     server.on("/setup", HTTP_POST, setup_post);
+    server.on("/wires", HTTP_POST, wires_post);
     server.on("/contact/reset", HTTP_POST, contact_reset_post);
     server.on("/contact/bootloader", HTTP_GET, contact_bootloader);
     server.on("/contact/bootloader", HTTP_POST, contact_bootloader);

@@ -120,9 +120,14 @@ static esp_err_t api_status(httpd_req_t *req)
     js(ip, sizeof ip, net_connected() ? net_ip() : "");
     js(log_js, sizeof log_js, log_raw);
     js(flash, sizeof flash, last_flash);
-    char wr_js[40], wt_js[40];
+    char wp_js[40], wn_js[40], wr_js[40], wt_js[40], wm_js[40], wc_js[40], ws_js[40];
+    js(wp_js, sizeof wp_js, settings.wire_power);
+    js(wn_js, sizeof wn_js, settings.wire_minus);
     js(wr_js, sizeof wr_js, settings.wire_r);
     js(wt_js, sizeof wt_js, settings.wire_t);
+    js(wm_js, sizeof wm_js, settings.wire_m);
+    js(wc_js, sizeof wc_js, settings.wire_c);
+    js(ws_js, sizeof ws_js, settings.wire_s);
     js(cmac_js, sizeof cmac_js, g && g->mac[0] ? g->mac : gw_mac);
     static const char *vias[] = {"auto", "cjtag", "sbl"};  // GWSYNC_VIA_*
     bool gw_checked = (g != NULL) || (settings.role == ROLE_STATION);
@@ -135,7 +140,8 @@ static esp_err_t api_status(httpd_req_t *req)
         "lu,\"queued\":%lu,"
         "\"replayed\":%lu,\"dropped\":%lu,\"waiting\":%u,\"uart_tx\":%lu,\"uart_rx\":%lu,"
         "\"uptime\":%lu,\"heap\":%lu,\"log\":%s,\"flash\":%s,\"contact_mac\":%s,"
-        "\"wires\":{\"r\":%s,\"t\":%s},\"pins\":{\"power\":%d,\"r\":%d,\"t\":%d,\"m\":%d,\"c\":%d,\"s\":%d,\"w\":%d},"
+        "\"wires\":{\"power\":%s,\"minus\":%s,\"r\":%s,\"t\":%s,\"m\":%s,\"c\":%s,\"s\":%s},"
+        "\"pins\":{\"power\":%d,\"r\":%d,\"t\":%d,\"m\":%d,\"c\":%d,\"s\":%d,\"w\":%d},"
         "\"build\":\"%s\",\"chip\":\"" CHIP "\",\"fw_file\":\"" FW_FILE "\","
         "\"gw\":{\"checked\":%s,\"result\":\"%s\",\"via_cjtag\":%s,\"msg\":%s,\"steps\":%s,\"carried\":%s,"
         "\"running\":%s},\"sensors\":[",
@@ -146,10 +152,10 @@ static esp_err_t api_status(httpd_req_t *req)
         (unsigned long)(settings.role == ROLE_STATION ? 0 : relay_task_connects()), (unsigned long)queued,
         (unsigned long)replayed, (unsigned long)dropped, waiting, (unsigned long)uart_tx, (unsigned long)uart_rx,
         (unsigned long)(esp_timer_get_time() / 1000000), (unsigned long)esp_get_free_heap_size(), log_js, flash,
-        cmac_js, wr_js, wt_js, OWS_PIN_CONTACT_POWER, OWS_PIN_CONTACT_TX, OWS_PIN_CONTACT_RX, OWS_PIN_CONTACT_TMS,
-        OWS_PIN_CONTACT_TCK, OWS_PIN_CONTACT_RESET, OWS_PIN_CONTACT_BOOT, build, gw_checked ? "true" : "false",
-        g ? results[g->result] : "same", g && g->via_cjtag ? "true" : "false", gwmsg, steps, g ? carried : "null",
-        g && (g->answered || g->result == GWSYNC_UPDATED) ? running : "null");
+        cmac_js, wp_js, wn_js, wr_js, wt_js, wm_js, wc_js, ws_js, OWS_PIN_CONTACT_POWER, OWS_PIN_CONTACT_TX,
+        OWS_PIN_CONTACT_RX, OWS_PIN_CONTACT_TMS, OWS_PIN_CONTACT_TCK, OWS_PIN_CONTACT_RESET, OWS_PIN_CONTACT_BOOT,
+        build, gw_checked ? "true" : "false", g ? results[g->result] : "same", g && g->via_cjtag ? "true" : "false",
+        gwmsg, steps, g ? carried : "null", g && (g->answered || g->result == GWSYNC_UPDATED) ? running : "null");
     size_t pos = len > 0 && len < 6140 ? (size_t)len : 0;
     for (unsigned i = 0; i < n_sns && pos + 96 < 6144; i++) {
         uint32_t seen_s = (uint32_t)(sns_now - sns[i].last_seen_ms) / 1000u;
@@ -343,27 +349,37 @@ static void rig_field(const char *body, const char *key, uint32_t *v)
     }
 }
 
-// The colours of the harness's R and T wires (POST /wires r=..&t=..; no restart): the page names a probe by its colour
+// The colours of the harness's wires (POST /wires power=..&minus=..&r=..&t=..&m=..&c=..&s=..; no restart): "-" clears
+// a colour, a missing or empty field is left unchanged
+static void wire_field(const char *body, const char *key, char *field, size_t cap)
+{
+    set_field(body, key, field, cap, true);
+    if (!strcmp(field, "-")) {
+        field[0] = 0;
+    }
+}
+
 static esp_err_t wires_post(httpd_req_t *req)
 {
     if (!require_auth(req)) {
         return ESP_OK;
     }
-    char body[128];
+    char body[256];
     int n =
         req->content_len > 0 && req->content_len < (int)sizeof body ? httpd_req_recv(req, body, req->content_len) : -1;
     if (n <= 0) {
-        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "r=<colour>&t=<colour>");
+        return httpd_resp_send_err(
+            req, HTTPD_400_BAD_REQUEST,
+            "power=<colour>&minus=<colour>&r=<colour>&t=<colour>&m=<colour>&c=<colour>&s=<colour>");
     }
     body[n] = 0;
-    set_field(body, "r", settings.wire_r, sizeof settings.wire_r, true);
-    set_field(body, "t", settings.wire_t, sizeof settings.wire_t, true);
-    if (!strcmp(settings.wire_r, "-")) {  // "-": back to the default (an empty field is left unchanged)
-        settings.wire_r[0] = 0;
-    }
-    if (!strcmp(settings.wire_t, "-")) {
-        settings.wire_t[0] = 0;
-    }
+    wire_field(body, "power", settings.wire_power, sizeof settings.wire_power);
+    wire_field(body, "minus", settings.wire_minus, sizeof settings.wire_minus);
+    wire_field(body, "r", settings.wire_r, sizeof settings.wire_r);
+    wire_field(body, "t", settings.wire_t, sizeof settings.wire_t);
+    wire_field(body, "m", settings.wire_m, sizeof settings.wire_m);
+    wire_field(body, "c", settings.wire_c, sizeof settings.wire_c);
+    wire_field(body, "s", settings.wire_s, sizeof settings.wire_s);
     if (!settings_save()) {
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "saving failed");
     }
