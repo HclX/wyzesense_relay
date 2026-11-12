@@ -163,9 +163,10 @@ esptool.py write_flash 0x300000 build/gwstock.bin
 ## Security and limits
 
 - **Authentication (`esp32/web/http_auth.c`)**: Once `admin_pass` (or WebSocket `token`) is configured, all mutating HTTP
-  endpoints (`POST /setup`, `POST /ota`, `POST /contact/reset`, `POST /contact/flash`, `POST /contact/stock`,
-  `POST /contact/gwsync`, `POST /contact/nv`, and `#ifdef OWS_DEBUG_UART` `/debug/uart`) require HTTP Basic (`-u admin:<pass>`) or
-  `Authorization: Bearer <pass>`. `GET /setup` never echoes saved Wi-Fi/token/admin secrets.
+  endpoints (`POST /setup`, `POST /wires`, `POST /ota`, `POST /contact/reset`, `POST /contact/flash`,
+  `POST /contact/stock`, `POST /contact/gwsync`, `POST /contact/nv`, and `#ifdef OWS_DEBUG_UART` `/debug/uart`) require
+  HTTP Basic (`-u admin:<pass>`) or `Authorization: Bearer <pass>`. `GET /setup` never echoes saved Wi-Fi/token/admin
+  secrets.
 - **Fallback SoftAP lifecycle**: When `ssid` is configured and Wi-Fi drops (e.g., router reboot), the relay retries STA
   with backoff (`~90–120 s`) before opening `OWS-relay-XXXX`, tears down the SoftAP immediately (`WIFI_MODE_STA` /
   `WiFi.softAPdisconnect(true)`) as soon as STA obtains an IP (`GOT_IP`), and closes an idle fallback SoftAP after 15

@@ -45,6 +45,7 @@ main{padding:18px 16px 40px}
 @media(max-width:520px){
 .wrow{gap:6px}
 .wrow select.wsel{width:82px}
+.wrow input.wcol{width:68px}
 .wpad{width:30px}
 .wgpio{min-width:56px;padding:2px 4px}
 }
@@ -77,7 +78,7 @@ font:inherit;font-weight:600;cursor:pointer;white-space:nowrap}
 .prog{height:8px;background:var(--bar);border-radius:99px;margin-top:12px;overflow:hidden;display:none}
 .prog i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
 .msg{margin-top:10px;font-size:14px;min-height:1.2em;overflow-wrap:anywhere}
-.msg.ok{color:var(--ok)}.msg.bad{color:var(--bad)}
+.msg.ok{color:var(--ok)}.msg.bad,dd.bad{color:var(--bad)}
 .note,.hint{color:var(--mute);font-size:13.5px;line-height:1.5;margin:8px 0 0;max-width:78ch}
 .hint{font-size:13px}
 .steps{margin:8px 0 0;padding-left:22px}
@@ -225,7 +226,7 @@ bootloader without reflashing the ESP.</p>
 <label class=check><input type=checkbox id=gwkeep checked>Pause startup auto-sync so reboots keep this image</label>
 <label class=check><input type=checkbox id=gwwipe>Wipe paired sensors (NV page 30)</label>
 <button class=btn id=gwgo>Flash radio</button>
-<div class=prog id=gwprog><i></i></div><div class=msg id=gwmsg></div></div>
+<div class=prog id=gwprog><i></i></div><div class=msg id=cgwmsg></div></div>
 
 <div class=card><h2>Stock gateway firmware</h2>
 <p class=note>Store a Wyze v1.8 dongle gateway dump (128 KB <code>FLASH.bin</code> / <code>flash.bin</code>, or the
@@ -263,7 +264,7 @@ packed <code>0x1EFA8</code> image) in the relay’s dedicated flash partition so
 <button class=btn>Save and restart</button><div class=msg id=setupmsg></div></form></div></div></section>
 </main>
 <script>
-const $=id=>document.getElementById(id);let busy=false,filled=false;
+const $=id=>document.getElementById(id);let busy=false,filled=false,devName='';
 // Only touch the DOM when the text actually changes: assigning textContent replaces the text node,
 // which collapses any text the user has selected (the 2 s status poll would clear a copy in progress).
 function setText(el,t){t=String(t);if(el.textContent!==t)el.textContent=t}
@@ -277,9 +278,8 @@ function dur(s){const d=Math.floor(s/86400),h=Math.floor(s/3600)%24,m=Math.floor
 return(d?d+'d ':'')+(d||h?h+'h ':'')+m+'m'}
 function ago(s){return s<5?'just now':s<60?s+'s ago':s<3600?Math.floor(s/60)+'m ago':dur(s)+' ago'}
 // The bridge field is ws:// + host:port + /ws/bridge: only host:port is edited, the full URL is sent.
-function bridgeHost(u){return String(u||'').trim().replace(/^wss?:\/\//i,'').replace(/\/.*$/,'')}
-function bridgeUrl(h){h=String(h||'').trim().replace(/^wss?:\/\//i,'').replace(/\/.*$/,'');
-return h?'ws://'+h+'/ws/bridge':''}
+function bridgeHost(u){return String(u||'').trim().replace(/^(?:wss?|https?):\/\//i,'').replace(/\/.*$/,'')}
+function bridgeUrl(h){h=bridgeHost(h);return h?'ws://'+h+'/ws/bridge':''}
 function pill(cls,t){$('pill').className='pill '+cls;setText($('pilltext'),t)}
 function showMsg(el,ok,t){el.className='msg '+(ok?'ok':'bad');setText(el,t)}
 // Rows are reused by MAC and their cells updated in place, so a selection in the table survives the poll.
@@ -298,8 +298,9 @@ if(tb.children[i]!==row.tr)tb.insertBefore(row.tr,tb.children[i]||null);seen.add
 for(const [mac,row] of sensorRows)if(!seen.has(mac)){row.tr.remove();sensorRows.delete(mac)}}
 // Wire colours offered (any other name: "custom…"); text in black or white, whichever reads on it
 const COLOURS=['red','black','white','yellow','green','blue','orange','purple','brown','grey','pink','cyan'];
-const LIGHT={white:1,yellow:1,orange:1,pink:1,cyan:1,grey:1};
-function colourStyle(c){return CSS.supports('color',c)?'background:'+c+';color:'+(LIGHT[c]?'#000':'#fff'):''}
+const LIGHT={white:1,yellow:1,orange:1,pink:1,cyan:1,grey:1,gray:1,lime:1,aqua:1,gold:1,silver:1,beige:1,ivory:1,khaki:1};
+function validColour(c){return !!c&&c.length<16&&!/["'<>;\\/]/.test(c)&&CSS.supports('color',c)}
+function colourStyle(c){return validColour(c)?'background:'+c+';color:'+(LIGHT[c.toLowerCase()]?'#000':'#fff'):''}
 function colourSelect(k,cur){const v=cur||'',known=COLOURS.includes(v),custom=v&&!known,
 esc=t=>String(t).replace(/[&<>"]/g,c=>'&#'+c.charCodeAt(0)+';');
 return '<select class=wsel data-k='+k+' style="'+colourStyle(v)+'" aria-label="wire colour">'+
@@ -307,8 +308,8 @@ return '<select class=wsel data-k='+k+' style="'+colourStyle(v)+'" aria-label="w
 COLOURS.map(c=>'<option value="'+c+'" style="'+colourStyle(c)+'"'+(c==v?' selected':'')+'>'+c+'</option>').join('')+
 '<option value="" style="background:var(--card);color:var(--fg)"'+(custom?' selected':'')+'>custom…</option></select>'+
 '<input class=wcol data-k='+k+' maxlength=15 value="'+(custom?esc(v):'')+'" placeholder="colour"'+(custom?'':' hidden')+'>'}
-// The R/T wires by colour (saved on the relay: POST /wires), wherever a GPIO is named
-let WIRES={},wiresFilled=false;
+// The harness wires by colour (saved on the relay: POST /wires), wherever a GPIO is named
+let WIRES={};
 function wireOf(n){return WIRES[n]||''}
 function withWire(t){return String(t||'').replace(/GPIO(\d+)/g,(m,n)=>wireOf(n)?wireOf(n)+' wire '+m:m)}
 function noteWires(s){const p=s.pins||{},w=s.wires||{};WIRES={};
@@ -326,23 +327,24 @@ function drawWiring(s){const role=s.role==2?2:0,e8=s.chip=='ESP8266',p=s.pins||{
 const key=s.chip+role+JSON.stringify(p)+JSON.stringify(w);if(key==wiringKey)return;wiringKey=key;
 const g=n=>n>=0?'GPIO'+n:'–',st=role==2;
 const rows=e8?[['+','3V3','supply','power'],['−','G','ground','minus'],['R','D4','input (DIO1)','r'],
-['T','D7','output (DIO0)','t'],['S','D2','RESET_N','s']]:
+['T','D7','output (DIO0)','t'],['M','D5','TMSC','m'],['C','D6','TCKC','c'],['S','D2','RESET_N','s']]:
 st?[['+',g(p.power),'supply (clip)','power'],['−','GND','ground (clip)','minus'],
 ['1',g(p.r),'probe 1','r'],['2',g(p.t),'probe 2','t']]:
 [['+',g(p.power),'supply','power'],['−','GND','ground','minus'],['R',g(p.r),'input (DIO1)','r'],
 ['T',g(p.t),'output (DIO0)','t'],['M',g(p.m),'TMSC','m'],['C',g(p.c),'TCKC','c'],['S',g(p.s),'RESET_N','s']];
 let v=rows.map(r=>{const col=w[r[3]]||'';
 return '<div class=wrow><span class=wpad>'+r[0]+'</span><span class=wdesc>'+r[2]+'</span>'+
-'<span class=wdot style="background:'+(CSS.supports('color',col)?col:'transparent')+'"></span><span class=wgpio>'+r[1]+'</span>'+
+'<span class=wdot style="background:'+(validColour(col)?col:'transparent')+'"></span><span class=wgpio>'+r[1]+'</span>'+
 colourSelect(r[3],col)+'</div>'}).join('');
 v+='<p class=hint>'+(st?
 'The sensor’s <b>+</b> and <b>−</b> clipped to its battery holder (battery out); the two probes on its pads: '+
 '<b>M</b>/<b>C</b> for cJTAG, <b>T</b>/<b>R</b> for the bootloader, either way round. Name each probe’s colour in its box.':
-e8?'Nothing on D8 (GPIO15): it must be low at start. Name each wire’s colour in its box.':
+e8?'<b>M</b>/<b>C</b> (D5/D6) are its debug port (optional, needed for stock gateway firmware). Nothing on D8 (GPIO15): it must be low at start. Name each wire’s colour in its box.':
 'Relay: the contact on all seven; <b>M</b>/<b>C</b> are its debug port. <b>+</b> on 3V3 instead also works '+
 '(then <b>S</b> resets it); <b>S</b> is optional with <b>+</b> on its GPIO. Name each wire’s colour in its box.')+'</p>';
 document.querySelectorAll('.wiring').forEach(d=>d.innerHTML=v)}
 async function poll(){if(busy)return;try{const r=await fetch('/api/status',{cache:'no-store'});const s=await r.json();
+devName=s.name||'';
 const role=s.role==2?2:0,relayOnly=role!=2||s.chip=='ESP8266',stationOnly=role==2,title=s.name+' · '+s.chip;
 $('probetab').hidden=relayOnly;$('rolewrap').hidden=s.chip=='ESP8266';
 if(relayOnly&&!$('probe').hidden)document.querySelector('nav button[data-tab=status]').click();
@@ -359,7 +361,7 @@ setText($('flashlast'),s.flash||'–');$('skipgw').checked=!!s.skip_gwsync;
 const g=s.gw||{},v=x=>x?x.version+' · '+x.id.slice(0,8):'unknown';setText($('gwrun'),v(g.running));
 setText($('gwcar'),v(g.carried));setText($('gwmsg'),g.checked?g.msg:'checking…');
 setText($('gwsteps'),(g.steps||'').trim()||'–');if(!g.checked)$('gwdet').open=true;
-$('gwmsg').className=!stationOnly&&(g.result=='failed'||g.result=='refused')?'msg bad':'';setText($('mac'),s.contact_mac||'–');
+$('gwmsg').className=!stationOnly&&(g.result=='failed'||g.result=='refused')?'bad':'';setText($('mac'),s.contact_mac||'–');
 setText($('queued'),s.queued+' alarms');setText($('replayed'),s.replayed);setText($('dropped'),s.dropped);
 setText($('waiting'),s.waiting);setText($('wifi'),s.ssid||'(not set)');
 setText($('rssi'),s.ip?s.rssi+' dBm':'–');setText($('up'),dur(s.uptime));
@@ -399,7 +401,7 @@ const warn=b.length>0x1e000?' (too large: > 120 KB; pick -app.bin)':b.length%4?'
 $('cgwapp').textContent=(g<0?'raw image ('+b.length+' B)':txt(b,g+64,12)+' · '+txt(b,g+16,24))+warn;
 $('cgwver').textContent=g<0?'no build-info block':txt(b,g+76,40)+' · '+Array.from(b.slice(g+8,g+16),x=>x.toString(16).padStart(2,'0')).join('').slice(0,8)};
 $('gwgo').onclick=()=>{const q=[];if($('gwkeep').checked)q.push('keep=1');if($('gwwipe').checked)q.push('nv=wipe');
-upload('/contact/flash'+(q.length?'?'+q.join('&'):''),'image',$('gwfile').files[0],$('gwprog'),$('gwmsg'),$('gwgo'))};
+upload('/contact/flash'+(q.length?'?'+q.join('&'):''),'image',$('gwfile').files[0],$('gwprog'),$('cgwmsg'),$('gwgo'))};
 $('stkgo').onclick=()=>upload('/contact/stock','image',$('stkfile').files[0],$('stkprog'),$('stkmsg'),$('stkgo'));
 $('reset').onclick=async()=>{const r=await fetch('/contact/reset',{method:'POST'});
 showMsg($('resetmsg'),r.ok,r.ok?'Radio reset sent.':(r.status==401?'Authentication required.':(await r.text()).trim()||'Failed.'));
@@ -411,7 +413,7 @@ $('nvexp').onclick=async()=>{$('resetmsg').className='msg';$('resetmsg').textCon
 const r=await fetch('/contact/nv',{cache:'no-store'});if(!r.ok){
 showMsg($('resetmsg'),false,(await r.text()).trim()||('HTTP '+r.status));return}
 const blob=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(blob);
-a.download=($('name').textContent||'ows-relay')+'-nv.json';a.click();URL.revokeObjectURL(a.href);
+a.download=(devName||'ows-relay')+'-nv.json';a.click();URL.revokeObjectURL(a.href);
 showMsg($('resetmsg'),true,'Exported nv.json.')};
 $('nvimp').onclick=()=>$('nvfile').click();
 $('nvfile').onchange=async()=>{const f=$('nvfile').files[0];$('nvfile').value='';if(!f)return;
@@ -447,9 +449,9 @@ const tr=c.active_transport&&c.active_transport!='none'?c.active_transport:(c.tr
 const labels={idle:'Disarmed',armed:c.mode=='identify'?'Identifying — connect sensor':'Armed ('+c.mode+') — connect sensor',
 running:c.mode=='dump'?'Dumping…':'Flashing…',slipped:'Paused (probe slip) — reconnect sensor',
 done:c.mode=='identify'?'Identified':'Complete!',error:'Error'};
-setText($('cjident'),!c.identified?'– (Identify first)':c.id_transport=='cjtag'?
+setText($('cjident'),!c.identified?'– (Identify first)':withWire(c.id_transport=='cjtag'?
 ('cJTAG: TCKC (C) = GPIO'+c.id_tck+' · TMSC (M) = GPIO'+c.id_tms):
-withWire('SBL: the sensor’s RX = GPIO'+c.sbl_map.r_gpio+' · its TX = GPIO'+c.sbl_map.t_gpio+' · backdoor = GPIO'+c.sbl_map.backdoor_gpio));
+('SBL: the sensor’s RX = GPIO'+c.sbl_map.r_gpio+' · its TX = GPIO'+c.sbl_map.t_gpio+' · backdoor = GPIO'+c.sbl_map.backdoor_gpio)));
 $('cjarmdump').disabled=$('cjarmflash').disabled=!c.identified;
 setText($('cjstate'),labels[c.state]||c.state);
 const pct=c.total_pages?Math.round(100*c.pages_done/c.total_pages):0;
@@ -457,8 +459,10 @@ $('cjbar').style.width=pct+'%';
 $('cjmsg').className='msg '+(c.state=='done'?'ok':c.state=='error'||c.state=='slipped'?'bad':'');
 setText($('cjmsg'),withWire(c.msg));
 setText($('cjmac'),c.mac||'–');
-setText($('cjpins'),c.tck_pin>=0?'cJTAG: TCKC (C) = GPIO'+c.tck_pin+' · TMSC (M) = GPIO'+c.tms_pin:
-(tr=='sbl'?'SBL 4-pad + power GPIO':'cJTAG GPIO'+c.pin_a+' / GPIO'+c.pin_b+' (auto-polarity)'));
+setText($('cjpins'),withWire(c.tck_pin>=0?'cJTAG: TCKC (C) = GPIO'+c.tck_pin+' · TMSC (M) = GPIO'+c.tms_pin:
+tr=='sbl2'||tr=='sbl'?'SBL: GPIO'+c.pin_a+' / GPIO'+c.pin_b+' (T/R auto)':
+tr=='ws'?'W/S: GPIO'+c.pin_a+' / GPIO'+c.pin_b:
+'cJTAG: GPIO'+c.pin_a+' / GPIO'+c.pin_b+' (auto-polarity)'));
 const m=c.sbl_map;
 setText($('cjsblmap'),m&&m.found?withWire(('R=pad '+m.r_pad+' (GPIO'+m.r_gpio+') · T=pad '+m.t_pad+' (GPIO'+m.t_gpio+') · backdoor=pad '+m.backdoor_pad+' (GPIO'+m.backdoor_gpio+') · chip '+m.chip_id)):'–');
 setText($('cjpages'),c.pages_done+' / '+c.total_pages+' pages ('+pct+'%)'+(c.slips?' · '+c.slips+' slip(s)':''));
@@ -475,13 +479,13 @@ cjLastState=c.state;cjLastPage=c.pages_done}catch(_){}}
 setInterval(pollCjtag,350);
 $('cjarmid').onclick=async()=>{tone(520,60,0,'sine');
 const r=await fetch('/cjtag/arm?mode=identify&'+cjQuery(),{method:'POST'});const t=(await r.text()).trim();
-showMsg($('cjmsg'),r.ok,t);cjLastState='armed';cjLastPage=0;pollCjtag()};
+showMsg($('cjmsg'),r.ok,withWire(t));cjLastState='armed';cjLastPage=0;pollCjtag()};
 document.addEventListener('change',e=>{const t=e.target;
 if(t.classList.contains('wcol'))saveWires(t.dataset.k,t.value);
-if(t.classList.contains('wsel')){if(t.value===''){const i=t.nextElementSibling;i.hidden=false;i.focus()}else saveWires(t.dataset.k,t.value)}});
+if(t.classList.contains('wsel')){if(t.value===''){t.style.cssText='';const i=t.nextElementSibling;i.hidden=false;i.focus()}else saveWires(t.dataset.k,t.value)}});
 $('cjarmdump').onclick=async()=>{tone(520,60,0,'sine');
 const r=await fetch('/cjtag/arm?mode=dump&'+cjQuery(),{method:'POST'});const t=(await r.text()).trim();
-showMsg($('cjmsg'),r.ok,t);cjLastState='armed';cjLastPage=0;pollCjtag()};
+showMsg($('cjmsg'),r.ok,withWire(t));cjLastState='armed';cjLastPage=0;pollCjtag()};
 $('cjdisarm').onclick=async()=>{const r=await fetch('/cjtag/arm?mode=none',{method:'POST'});
 showMsg($('cjmsg'),r.ok,(await r.text()).trim());cjLastState='idle';pollCjtag()};
 $('cjarmflash').onclick=()=>{const f=$('cjfile').files[0];
