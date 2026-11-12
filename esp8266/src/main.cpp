@@ -308,7 +308,19 @@ void setup_post()
     ESP.restart();
 }
 
-// POST /wires: the harness wire colours (power, minus, r, t, m, c, s); "-" clears, a missing field is unchanged
+bool wire_colour_valid(const char *s)
+{
+    for (; *s; s++) {
+        unsigned char c = (unsigned char)*s;
+        if (c < 0x20 || c >= 0x7F || strchr("\"'<>;\\/", c) != nullptr) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// POST /wires: the harness wire colours (power, minus, r, t, m, c, s); "-" clears, a missing or empty field is
+// unchanged
 void wires_post()
 {
     if (!require_auth()) {
@@ -323,23 +335,39 @@ void wires_post()
         {"t", settings.wires.t},         {"m", settings.wires.m},         {"c", settings.wires.c},
         {"s", settings.wires.s},
     };
+    String vals[7];
+    bool has[7] = {};
     bool any = false;
-    for (const Wire &w : ws) {
-        if (!server.hasArg(w.key)) {
+    for (size_t i = 0; i < 7; i++) {
+        if (!server.hasArg(ws[i].key)) {
             continue;
         }
-        String v = server.arg(w.key);
+        String v = server.arg(ws[i].key);
         v.trim();
+        if (!v.length()) {
+            continue;
+        }
         if (v.length() >= 16) {
             server.send(400, "text/plain", "colour too long");
             return;
         }
-        strcpy(w.field, v == "-" ? "" : v.c_str());
+        if (!wire_colour_valid(v.c_str())) {
+            server.send(400, "text/plain", "invalid colour");
+            return;
+        }
+        vals[i] = v;
+        has[i] = true;
         any = true;
     }
     if (!any) {
-        server.send(400, "text/plain", "power=..&minus=..&r=..&t=..&m=..&c=..&s=..");
+        server.send(400, "text/plain",
+                    "power=<colour>&minus=<colour>&r=<colour>&t=<colour>&m=<colour>&c=<colour>&s=<colour>");
         return;
+    }
+    for (size_t i = 0; i < 7; i++) {
+        if (has[i]) {
+            strcpy(ws[i].field, vals[i] == "-" ? "" : vals[i].c_str());
+        }
     }
     if (!settings_save()) {
         server.send(500, "text/plain", "saving failed");
@@ -1222,7 +1250,7 @@ void api_status()
     char n[320];  // the fields below: ~250 bytes since gw_fw / stock_available (220 cut "heap" off)
     uint32_t now = now_ms();
     String b;
-    b.reserve(2560);
+    b.reserve(2816);
     b = "{\"name\":" + js(name) + ",\"mdns\":" + js(mdns_fqdn) + ",\"ssid\":" + js(settings.ssid) +
         ",\"url\":" + js(settings.url);
     b += ",\"ip\":" + js(WiFi.isConnected() ? WiFi.localIP().toString().c_str() : "");
@@ -1244,6 +1272,9 @@ void api_status()
     b += ",\"wires\":{\"power\":" + js(settings.wires.power) + ",\"minus\":" + js(settings.wires.minus) +
          ",\"r\":" + js(settings.wires.r) + ",\"t\":" + js(settings.wires.t) + ",\"m\":" + js(settings.wires.m) +
          ",\"c\":" + js(settings.wires.c) + ",\"s\":" + js(settings.wires.s) + "}";
+    snprintf(n, sizeof n, ",\"pins\":{\"power\":-1,\"r\":%d,\"t\":13,\"m\":%d,\"c\":%d,\"s\":%d,\"w\":-1}",
+             CONTACT_R_GPIO, CONTACT_TMS_GPIO, CONTACT_TCK_GPIO, OWS_CONTACT_RESET);
+    b += n;
     b += ",\"build\":" + js(kRelayTag + 18) + ",\"chip\":\"ESP8266\",\"fw_file\":\".pio/build/d1_mini/firmware.bin\"";
     b += ",\"gw\":{\"checked\":" + String(gw_checked ? "true" : "false") + ",\"result\":\"" +
          results[gw_report.result] + "\",\"msg\":" + js(gw_report.msg) + ",\"steps\":" + js(gw_steps_text().c_str()) +

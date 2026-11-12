@@ -351,12 +351,15 @@ static void rig_field(const char *body, const char *key, uint32_t *v)
 
 // The colours of the harness's wires (POST /wires power=..&minus=..&r=..&t=..&m=..&c=..&s=..; no restart): "-" clears
 // a colour, a missing or empty field is left unchanged
-static void wire_field(const char *body, const char *key, char *field, size_t cap)
+static bool wire_colour_valid(const char *s)
 {
-    set_field(body, key, field, cap, true);
-    if (!strcmp(field, "-")) {
-        field[0] = 0;
+    for (; *s; s++) {
+        unsigned char c = (unsigned char)*s;
+        if (c < 0x20 || c >= 0x7F || strchr("\"'<>;\\/", c) != NULL) {
+            return false;
+        }
     }
+    return true;
 }
 
 static esp_err_t wires_post(httpd_req_t *req)
@@ -373,13 +376,51 @@ static esp_err_t wires_post(httpd_req_t *req)
             "power=<colour>&minus=<colour>&r=<colour>&t=<colour>&m=<colour>&c=<colour>&s=<colour>");
     }
     body[n] = 0;
-    wire_field(body, "power", settings.wire_power, sizeof settings.wire_power);
-    wire_field(body, "minus", settings.wire_minus, sizeof settings.wire_minus);
-    wire_field(body, "r", settings.wire_r, sizeof settings.wire_r);
-    wire_field(body, "t", settings.wire_t, sizeof settings.wire_t);
-    wire_field(body, "m", settings.wire_m, sizeof settings.wire_m);
-    wire_field(body, "c", settings.wire_c, sizeof settings.wire_c);
-    wire_field(body, "s", settings.wire_s, sizeof settings.wire_s);
+    struct {
+        const char *key;
+        char *field;
+    } const ws[7] = {
+        {"power", settings.wire_power}, {"minus", settings.wire_minus}, {"r", settings.wire_r}, {"t", settings.wire_t},
+        {"m", settings.wire_m},         {"c", settings.wire_c},         {"s", settings.wire_s},
+    };
+    char vals[7][16];
+    bool has[7] = {false};
+    bool any = false;
+    for (size_t i = 0; i < 7; i++) {
+        char raw[256];
+        if (!form_value(body, ws[i].key, raw, sizeof raw)) {
+            continue;
+        }
+        char *s = raw;
+        while (*s == ' ' || *s == '\t') {
+            s++;
+        }
+        for (size_t len = strlen(s); len && (s[len - 1] == ' ' || s[len - 1] == '\t'); len--) {
+            s[len - 1] = 0;
+        }
+        if (!s[0]) {
+            continue;
+        }
+        if (strlen(s) >= 16) {
+            return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "colour too long");
+        }
+        if (!wire_colour_valid(s)) {
+            return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid colour");
+        }
+        memcpy(vals[i], s, strlen(s) + 1);
+        has[i] = true;
+        any = true;
+    }
+    if (!any) {
+        return httpd_resp_send_err(
+            req, HTTPD_400_BAD_REQUEST,
+            "power=<colour>&minus=<colour>&r=<colour>&t=<colour>&m=<colour>&c=<colour>&s=<colour>");
+    }
+    for (size_t i = 0; i < 7; i++) {
+        if (has[i]) {
+            strcpy(ws[i].field, !strcmp(vals[i], "-") ? "" : vals[i]);
+        }
+    }
     if (!settings_save()) {
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "saving failed");
     }
