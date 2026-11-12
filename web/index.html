@@ -345,7 +345,8 @@ e8?'<b>M</b>/<b>C</b> (D5/D6) are its debug port (optional, needed for stock gat
 document.querySelectorAll('.wiring').forEach(d=>d.innerHTML=v)}
 async function poll(){if(busy)return;try{const r=await fetch('/api/status',{cache:'no-store'});const s=await r.json();
 devName=s.name||'';
-const role=s.role==2?2:0,relayOnly=role!=2||s.chip=='ESP8266',stationOnly=role==2,title=s.name+' · '+s.chip;
+const role=s.role==2?2:0,relayOnly=role!=2||s.chip=='ESP8266',stationOnly=role==2,
+title=s.name+' · '+s.chip+(s.board?' ('+s.board+')':'');
 $('probetab').hidden=relayOnly;$('rolewrap').hidden=s.chip=='ESP8266';
 if(relayOnly&&!$('probe').hidden)document.querySelector('nav button[data-tab=status]').click();
 setText($('name'),title);document.title=title;

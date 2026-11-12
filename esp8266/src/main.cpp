@@ -15,6 +15,10 @@
 #include "index_html.h"     // generated from esp32/web/index.html (embed.py)
 #include "relay_version.h"  // generated (embed.py): OWS_RELAY_VERSION
 
+#ifndef OWS_BOARD
+#define OWS_BOARD "d1_mini"
+#endif
+
 extern "C" {
 #include "buffer.h"
 #include "cjtag.h"
@@ -1275,7 +1279,10 @@ void api_status()
     snprintf(n, sizeof n, ",\"pins\":{\"power\":-1,\"r\":%d,\"t\":13,\"m\":%d,\"c\":%d,\"s\":%d,\"w\":-1}",
              CONTACT_R_GPIO, CONTACT_TMS_GPIO, CONTACT_TCK_GPIO, OWS_CONTACT_RESET);
     b += n;
-    b += ",\"build\":" + js(kRelayTag + 18) + ",\"chip\":\"ESP8266\",\"fw_file\":\".pio/build/d1_mini/firmware.bin\"";
+    char board_raw[33];
+    snprintf(board_raw, sizeof board_raw, "%s", OWS_BOARD[0] ? OWS_BOARD : "d1_mini");
+    b += ",\"build\":" + js(kRelayTag + 18) + ",\"chip\":\"ESP8266\",\"board\":" + js(board_raw) +
+         ",\"fw_file\":\".pio/build/d1_mini/firmware.bin\"";
     b += ",\"gw\":{\"checked\":" + String(gw_checked ? "true" : "false") + ",\"result\":\"" +
          results[gw_report.result] + "\",\"msg\":" + js(gw_report.msg) + ",\"steps\":" + js(gw_steps_text().c_str()) +
          ",\"carried\":{\"version\":" + js(gw_report.carried.version) + ",\"id\":\"" + id_hex(gw_report.carried.id) +

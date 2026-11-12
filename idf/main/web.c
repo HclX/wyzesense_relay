@@ -28,11 +28,20 @@
 
 static const char *TAG = "web";
 #if CONFIG_IDF_TARGET_ESP32S3
-#define CHIP    "ESP32-S3"
-#define FW_FILE "idf/build/ows_relay.bin"
+#define CHIP          "ESP32-S3"
+#define DEFAULT_BOARD "devkit"
+#define FW_FILE       "idf/build/ows_relay.bin"
 #else
-#define CHIP    "ESP32"
-#define FW_FILE "idf/build-esp32/ows_relay.bin"
+#define CHIP          "ESP32"
+#define DEFAULT_BOARD "lolin32"
+#define FW_FILE       "idf/build-esp32/ows_relay.bin"
+#endif
+#ifndef OWS_BOARD
+#ifdef CONFIG_OWS_BOARD
+#define OWS_BOARD CONFIG_OWS_BOARD
+#else
+#define OWS_BOARD DEFAULT_BOARD
+#endif
 #endif
 // found by the web page in an uploaded image (web/index.html): the relay's version
 static const char relay_tag[] = "OWS-RELAY-VERSION:" OWS_RELAY_VERSION;
@@ -121,6 +130,9 @@ static esp_err_t api_status(httpd_req_t *req)
     js(log_js, sizeof log_js, log_raw);
     js(flash, sizeof flash, last_flash);
     char wp_js[40], wn_js[40], wr_js[40], wt_js[40], wm_js[40], wc_js[40], ws_js[40];
+    char board_raw[33], board_js[80];
+    snprintf(board_raw, sizeof board_raw, "%s", OWS_BOARD[0] ? OWS_BOARD : DEFAULT_BOARD);
+    js(board_js, sizeof board_js, board_raw);
     js(wp_js, sizeof wp_js, settings.wire_power);
     js(wn_js, sizeof wn_js, settings.wire_minus);
     js(wr_js, sizeof wr_js, settings.wire_r);
@@ -142,7 +154,7 @@ static esp_err_t api_status(httpd_req_t *req)
         "\"uptime\":%lu,\"heap\":%lu,\"log\":%s,\"flash\":%s,\"contact_mac\":%s,"
         "\"wires\":{\"power\":%s,\"minus\":%s,\"r\":%s,\"t\":%s,\"m\":%s,\"c\":%s,\"s\":%s},"
         "\"pins\":{\"power\":%d,\"r\":%d,\"t\":%d,\"m\":%d,\"c\":%d,\"s\":%d,\"w\":%d},"
-        "\"build\":\"%s\",\"chip\":\"" CHIP "\",\"fw_file\":\"" FW_FILE "\","
+        "\"build\":\"%s\",\"chip\":\"" CHIP "\",\"board\":%s,\"fw_file\":\"" FW_FILE "\","
         "\"gw\":{\"checked\":%s,\"result\":\"%s\",\"via_cjtag\":%s,\"msg\":%s,\"steps\":%s,\"carried\":%s,"
         "\"running\":%s},\"sensors\":[",
         name, mdns, ssid, url, ip, net_setup_ap() ? "true" : "false",
@@ -154,8 +166,9 @@ static esp_err_t api_status(httpd_req_t *req)
         (unsigned long)(esp_timer_get_time() / 1000000), (unsigned long)esp_get_free_heap_size(), log_js, flash,
         cmac_js, wp_js, wn_js, wr_js, wt_js, wm_js, wc_js, ws_js, OWS_PIN_CONTACT_POWER, OWS_PIN_CONTACT_TX,
         OWS_PIN_CONTACT_RX, OWS_PIN_CONTACT_TMS, OWS_PIN_CONTACT_TCK, OWS_PIN_CONTACT_RESET, OWS_PIN_CONTACT_BOOT,
-        build, gw_checked ? "true" : "false", g ? results[g->result] : "same", g && g->via_cjtag ? "true" : "false",
-        gwmsg, steps, g ? carried : "null", g && (g->answered || g->result == GWSYNC_UPDATED) ? running : "null");
+        build, board_js, gw_checked ? "true" : "false", g ? results[g->result] : "same",
+        g && g->via_cjtag ? "true" : "false", gwmsg, steps, g ? carried : "null",
+        g && (g->answered || g->result == GWSYNC_UPDATED) ? running : "null");
     size_t pos = len > 0 && len < 6140 ? (size_t)len : 0;
     for (unsigned i = 0; i < n_sns && pos + 96 < 6144; i++) {
         uint32_t seen_s = (uint32_t)(sns_now - sns[i].last_seen_ms) / 1000u;
