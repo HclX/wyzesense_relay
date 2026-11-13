@@ -1,8 +1,6 @@
-# Test pads
+# Wyze Sense v1 Contact Board Test Pads
 
-The photos circle each pad in its signal's colour; the wiring diagrams in this guide use the same colours.
-
-## v1 contact sensor
+The photo circles each pad in its signal's colour; the wiring diagrams under `docs/img/` use the same colours.
 
 The pads are on the battery side of the board (battery out). Labels are printed next to most of them.
 
@@ -11,33 +9,14 @@ The pads are on the battery side of the board (battery out). Labels are printed 
 | Pad | Colour | Signal | Used for |
 |---|---|---|---|
 | `V+` | pink | 3.3 V supply | power from the LaunchPad or the ESP (battery out) |
-| `V−` | dark red | ground | |
-| `M` | purple | JTAG TMSC | flashing with the LaunchPad (levels 2-4) |
-| `C` | red | JTAG TCKC | flashing with the LaunchPad |
-| `S` | green | reset (RESET_N) | flashing with the LaunchPad; the ESP's reset line |
-| `R` | grey-blue | the chip's serial input and bootloader backdoor (DIO1) | console (level 3); the ESP's TX and bootloader entry (level 4) |
-| `T` | yellow-green | the chip's serial output (DIO0) | console; the ESP's RX |
-| `W` | blue | DIO10 (factory test input, pulled up) | |
+| `V−` / `VBAT−` | dark red | ground | common ground |
+| `M` | purple | cJTAG TMSC | 2-pin debug port (`cjtag`) |
+| `C` | red | cJTAG TCKC | 2-pin debug port (`cjtag`) |
+| `S` | green | reset (`RESET_N`) | hardware reset (`optional` if `V+` is on GPIO) |
+| `R` | grey-blue | serial input & bootloader backdoor (`DIO1`) | ESP UART TX & ROM bootloader entry |
+| `T` | yellow-green | serial output (`DIO0`) | ESP UART RX |
+| `W` | blue | `DIO10` (factory test input, pulled up) | unused on the relay |
 
-A second green pad (bottom left) and a second dark-red pad (top right) carry the same signals as `S` and `V−`;
-use whichever is easier to reach.
+A second green pad (bottom left) and a second dark-red pad (`VBAT−`, top right) carry the same signals as `S` and `V−`; use whichever is easier to reach.
 
-The reed switch (the glass tube along the bottom edge, under the board) connects the chip's input DIO7 to ground when
-a magnet is near; the DIY sensors in [level 3](3-contact-sensor.md#diy-sensor-types) replace it. The button is on DIO11
-and the LED on DIO9; neither has a pad.
-
-## Wyze USB dongle
-
-None of the levels needs the dongle's pads: it is flashed over its own USB port ([level 1](1-dongle.md)). They are
-shown here for reference and repairs. Its CC1310 has the same pads as the contact, plus the USB supply.
-
-![The Wyze USB dongle's board, each pad circled in its signal's colour](../img/dongle.jpg)
-
-| Pad | Colour | Signal |
-|---|---|---|
-| `3.3V` | pink | 3.3 V (from the dongle's regulator) |
-| `VBUS` | dark blue | 5 V from USB |
-| `−` | dark red | ground |
-| `M` / `C` | purple / red | JTAG TMSC / TCKC |
-| `S` | green | reset (RESET_N) |
-| `R` / `T` | grey-blue / yellow-green | the CC1310's serial input / output, to the dongle's USB chip |
+The reed switch (the glass tube along the bottom edge, under the board) connects `DIO7` to ground when a magnet is near. The button is on `DIO11` and the LED on `DIO9`; neither has a test pad.
