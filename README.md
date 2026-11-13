@@ -53,10 +53,35 @@ Remove the coin-cell battery and solder 7 thin wires (such as strands from a sta
 
 ### 2. Flash the Relay Firmware
 
-#### ESP32-S3 / Classic ESP32 (ESP-IDF)
+#### Option A: Use a Release Archive (Recommended)
+
+1. Download **`wyzesenserelay-<version>.zip`** from the [Releases](https://github.com/HclX/wyzesenserelay/releases) page and unzip it.
+2. Make sure `esptool` is available (`pip install esptool`, `pipx install esptool`, or `uv` for `uvx esptool`). On Linux, install the included udev rule once so you don't need `sudo` for USB serial ports:
+   ```bash
+   sudo cp 72-esp-usb-serial.rules /etc/udev/rules.d/
+   sudo udevadm control --reload && sudo udevadm trigger
+   ```
+3. Plug in your ESP board over USB and run the included flash helper (auto-detects the chip and selects the matching image):
+   - **Linux / macOS:**
+     ```bash
+     ./flash.sh                 # auto-detect port & chip
+     ./flash.sh /dev/ttyUSB0    # or specify serial port
+     ```
+   - **Windows:**
+     ```bat
+     flash.bat                  & :: auto-detect COM port & chip
+     flash.bat COM5             & :: or specify COM port
+     ```
+
+   *(Or flash manually with `esptool --chip <esp32s3|esp32|esp8266> write-flash 0x0 <image>.bin`.)*
+
+#### Option B: Build from Source
+
+<details>
+<summary>ESP-IDF (ESP32-S3 / Classic ESP32) and PlatformIO (ESP8266) build commands</summary>
 
 ```bash
-# One-time toolchain setup (~6 GB into .toolchain/)
+# One-time ESP-IDF toolchain setup (~6 GB into .toolchain/)
 tools/toolchain.sh esp-idf
 
 # ESP32-S3 (default)
@@ -66,13 +91,12 @@ tools/idf.sh -p /dev/ttyACM0 flash monitor
 # Classic ESP32 (e.g. LOLIN32)
 tools/idf.sh -B build-esp32 -D SDKCONFIG=build-esp32/sdkconfig -D IDF_TARGET=esp32 build
 tools/idf.sh -B build-esp32 -D SDKCONFIG=build-esp32/sdkconfig -p /dev/ttyUSB0 flash monitor
-```
 
-#### ESP8266 (D1 mini / NodeMCU)
-
-```bash
+# ESP8266 (D1 mini / NodeMCU)
 tools/pio.sh run -t upload --upload-port /dev/ttyUSB0
 ```
+
+</details>
 
 ---
 
