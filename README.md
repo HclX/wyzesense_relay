@@ -127,7 +127,42 @@ Once on your network, open `http://<relay-ip>/` (or `http://ows-relay-xxxx.local
 
 ---
 
-### 5. HTTP API Quick Reference
+### 5. Provisioning Station Mode (ESP32 / ESP32-S3)
+
+An ESP32 or ESP32-S3 relay can temporarily act as a **Provisioning station** to back up and flash other Wyze Sense v1 sensors using two hand-held probes (relaying is paused while in station mode):
+
+1. **Switch role:** Open **Setup → Device role**, select **Provisioning station**, and click **Save**. The ESP restarts and enables the **Probe (M/C & SBL)** tab.
+2. **Connect the target sensor (4 wires):**
+   - **Remove the coin-cell battery** from the target sensor.
+   - Clip **`+`** (`GPIO7` on S3, `GPIO27` on LOLIN32) and **`−`** (`GND`) to the sensor's battery holder terminals.
+   - Use the relay's **`R`** and **`T`** wires as two hand-held probes (Probe 1 and Probe 2; you can assign their wire colours in the **Probe** tab's Wiring panel).
+3. **Identify the sensor:**
+   - Choose the transport in **Probe**:
+     - **cJTAG (`M`/`C`):** Touch Probe 1 & Probe 2 to the sensor's `M` and `C` pads (either polarity).
+     - **Bootloader (`T`/`R`):** Touch Probe 1 & Probe 2 to the sensor's `T` and `R` pads (either way round; works on units with the `DIO1` bootloader backdoor enabled).
+     - **W/S:** Optional helper after `T`/`R` to distinguish `W` vs `S` pads.
+   - Click **Identify**, hold both probes steadily on the pads until the status reports **Identified** (with a chime), then lift the probes.
+4. **Dump (back up) or Flash:**
+   - **Dump:** Click **Arm Dump**, touch the probes back onto the same pads, and wait for the progress bar to finish. Your browser automatically downloads `sensor_<MAC>_flash.bin` (128 KB) and `sensor_<MAC>_fcfg1.bin` (1 KB). *Always dump a unit before flashing it.*
+   - **Flash:** Select a `.bin` firmware image (optionally check **Wipe NV** if you want to clear page 30), click **Arm Flash**, and hold the probes on the pads until complete. Pages 0–29 are written and verified; page 31 (CCFG/MAC) is never touched.
+5. **Return to Relay mode:** Go to **Setup → Device role**, select **Relay**, and click **Save**.
+
+---
+
+### 6. Running Stock Wyze v1.8 Gateway Firmware (Optional)
+
+If you prefer to run Wyze's stock v1.8 dongle firmware on your contact board instead of OpenWyzeSense (requires **`M` and `C` wired** for cJTAG):
+
+1. Open **Update → Stock gateway firmware**.
+2. Choose your 128 KB Wyze v1.8 dongle flash dump (`FLASH.bin`) or packed `0x1EFA8` image and click **Upload stock image**.
+   - The relay verifies the SHA-256 checksum and writes it to a dedicated flash partition (`gwstock` on ESP32/S3, `_FS_start` on ESP8266) that survives future relay OTA updates.
+   - *(Alternatively via CLI: `curl -u admin:<pass> -F image=@FLASH.bin http://<ip>/contact/stock`.)*
+3. Open **Setup → Contact firmware**, select **Stock Wyze v1.8 (dongle gateway)**, and click **Save**.
+4. The relay restarts and flashes the stock gateway onto the contact board over cJTAG while preserving the contact's CCFG and factory MAC.
+
+---
+
+### 7. HTTP API Quick Reference
 
 If `admin_pass` (or bridge `token`) is set, include `-u admin:<pass>` (or `Authorization: Bearer <pass>`) on mutating requests:
 
