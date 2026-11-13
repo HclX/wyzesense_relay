@@ -153,9 +153,12 @@ An ESP32 or ESP32-S3 relay can temporarily act as a **Provisioning station** to 
 
 If you prefer to run Wyze's stock v1.8 dongle firmware on your contact board instead of OpenWyzeSense (requires **`M` and `C` wired** for cJTAG):
 
+- **Why it is not built in:** Stock Wyze firmware is proprietary, so it is never included in this repository or in release images — only its SHA-256 verification digest is compiled in.
+- **Upload once, kept across updates:** Once uploaded, it lives in a dedicated flash partition (`gwstock` on ESP32/S3, `_FS_start` on ESP8266) and survives future relay OTA updates (until a full USB flash erase).
+- **Where to get it:** Back up your own Wyze Sense v1 USB dongle's 128 KB flash (`FLASH.bin`) using `ows-flash backup` from [`HclX/openwyzesense`](https://github.com/HclX/openwyzesense).
+
 1. Open **Update → Stock gateway firmware**.
-2. Choose your 128 KB Wyze v1.8 dongle flash dump (`FLASH.bin`) or packed `0x1EFA8` image and click **Upload stock image**.
-   - The relay verifies the SHA-256 checksum and writes it to a dedicated flash partition (`gwstock` on ESP32/S3, `_FS_start` on ESP8266) that survives future relay OTA updates.
+2. Choose your 128 KB Wyze v1.8 dongle flash dump (`FLASH.bin`) or packed `0x1EFA8` image and click **Upload stock image** (the relay verifies its SHA-256 before writing).
    - *(Alternatively via CLI: `curl -u admin:<pass> -F image=@FLASH.bin http://<ip>/contact/stock`.)*
 3. Open **Setup → Contact firmware**, select **Stock Wyze v1.8 (dongle gateway)**, and click **Save**.
 4. The relay restarts and flashes the stock gateway onto the contact board over cJTAG while preserving the contact's CCFG and factory MAC.
