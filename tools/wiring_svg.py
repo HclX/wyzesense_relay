@@ -14,7 +14,6 @@ import pathlib
 SCALE = 0.3
 # pad: (x, y) in docs/img/contact_v1.jpg, colour as marked there, label
 PADS = {
-    'W': ((405, 315), '#1e88e5', 'W'),
     '-': ((633, 235), '#8e1b1b', 'V− (GND)'),
     'S': ((350, 708), '#2e9e3e', 'S'),
     'C': ((503, 820), '#e53935', 'C'),
@@ -32,22 +31,26 @@ RELAYS = {
         'ESP32-S3 DevKit',
         'relay image ows-relay-esp32s3-*',
         [
-            ('+', '3V3', ''),
+            ('+', 'GPIO7', 'or 3V3'),
             ('-', 'GND', ''),
             ('R', 'GPIO17', 'UART1 TX'),
             ('T', 'GPIO18', 'UART1 RX'),
-            ('S', 'GPIO4', 'reset'),
+            ('M', 'GPIO15', 'cJTAG TMSC'),
+            ('C', 'GPIO16', 'cJTAG TCKC'),
+            ('S', 'GPIO4', 'reset (opt. w/ GPIO7)'),
         ],
     ),
     'lolin32': (
         'Classic ESP32 (LOLIN32)',
         'relay image ows-relay-esp32-*',
         [
-            ('+', '3V', ''),
+            ('+', 'GPIO27', 'or 3V'),
             ('-', 'GND', ''),
             ('R', '17', 'UART1 TX'),
             ('T', '18', 'UART1 RX'),
-            ('S', '4', 'reset'),
+            ('M', '25', 'cJTAG TMSC'),
+            ('C', '26', 'cJTAG TCKC'),
+            ('S', '4', 'reset (opt. w/ GPIO27)'),
         ],
     ),
     'd1mini': (
@@ -58,6 +61,8 @@ RELAYS = {
             ('-', 'G', 'GND'),
             ('R', 'D4', 'GPIO2, UART1 TX'),
             ('T', 'D7', 'GPIO13, UART0 RX'),
+            ('M', 'D5', 'GPIO14, cJTAG TMSC'),
+            ('C', 'D6', 'GPIO12, cJTAG TCKC'),
             ('S', 'D2', 'GPIO4, reset'),
         ],
     ),
@@ -172,16 +177,16 @@ def relay(key):
     ox, oy = 40, 70
     body = contact(ox, oy, {p for p, _, _ in pins})
     order = sorted(pins, key=lambda p: pad_xy(p[0], ox, oy)[1])
-    bx, by, step = 640, 70, 50
+    bx, by, step = 620, 70, 44
     body += [
-        f'<rect x="{bx}" y="{by - 40}" width="220" height="{step * len(order) + 70}" rx="10" fill="#1b4f72"/>',
-        f'<text x="{bx + 110}" y="{by - 16}" text-anchor="middle" font-size="14" font-weight="bold" fill="#ffffff" '
+        f'<rect x="{bx}" y="{by - 40}" width="245" height="{step * len(order) + 70}" rx="10" fill="#1b4f72"/>',
+        f'<text x="{bx + 122}" y="{by - 16}" text-anchor="middle" font-size="14" font-weight="bold" fill="#ffffff" '
         f'{FONT}>{title}</text>',
-        f'<text x="{bx + 110}" y="{by + step * len(order) + 22}" text-anchor="middle" font-size="11" fill="#d0d7de" '
+        f'<text x="{bx + 122}" y="{by + step * len(order) + 22}" text-anchor="middle" font-size="11" fill="#d0d7de" '
         f'{FONT}>{subtitle}</text>',
     ]
     for i, (pad, pin, note) in enumerate(order):
-        y = by + 25 + i * step
+        y = by + 22 + i * step
         x, py = pad_xy(pad, ox, oy)
         body.append(wire(x, py, bx + 14, y, PADS[pad][1]))
         body.append(f'<circle cx="{bx + 14}" cy="{y}" r="7" fill="#d4b483" stroke="#ffffff" stroke-width="2"/>')
@@ -189,14 +194,14 @@ def relay(key):
             f'<text x="{bx + 30}" y="{y + 5}" font-size="14" font-weight="bold" fill="#ffffff" {FONT}>{pin}</text>'
         )
         if note:
-            body.append(f'<text x="{bx + 100}" y="{y + 5}" font-size="11" fill="#d0d7de" {FONT}>{note}</text>')
+            body.append(f'<text x="{bx + 102}" y="{y + 5}" font-size="11" fill="#d0d7de" {FONT}>{note}</text>')
     body += [
-        f'<text x="40" y="440" font-size="12" fill="{INK}" {FONT}>Five wires; pin names as printed on the ESP board. '
-        "R is the contact's input (the ESP transmits), T its output.</text>",
-        f'<text x="40" y="460" font-size="12" fill="{INK}" {FONT}>The ESP powers the contact from its 3.3 V pin '
-        '(battery out). S lets the relay reset and reflash the contact by itself.</text>',
+        f'<text x="40" y="445" font-size="12" fill="{INK}" {FONT}>Seven wires (M/C recommended for cJTAG; '
+        'S optional when + is on GPIO7/GPIO27). R is contact RX, T is TX.</text>',
+        f'<text x="40" y="465" font-size="12" fill="{INK}" {FONT}>Battery out; keep 20–30 cm of wire with the '
+        'contact antenna pointing away from the ESP.</text>',
     ]
-    return svg(900, 480, body, f'Wiring a Wyze v1 contact to an {title} relay')
+    return svg(900, 485, body, f'Wiring a Wyze v1 contact to an {title} relay')
 
 
 def main():

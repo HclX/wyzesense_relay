@@ -47,8 +47,6 @@ Remove the coin-cell battery and solder 7 thin wires (such as strands from a sta
 - **Classic ESP32 (LOLIN32):** ![LOLIN32 wiring](docs/img/wiring-contact-lolin32.svg)
 - **ESP8266 (D1 mini / NodeMCU):** ![D1 mini wiring](docs/img/wiring-contact-d1mini.svg)
 
-*(Diagrams show the 5-wire `3V3` + `S` layout; add `M`/`C` and optionally move `V+` from `3V3` to `GPIO7`/`GPIO27` per the table above.)*
-
 </details>
 
 ---

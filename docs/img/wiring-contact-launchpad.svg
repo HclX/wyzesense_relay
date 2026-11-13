@@ -7,8 +7,6 @@
 <text x="223" y="380" text-anchor="middle" font-size="11" fill="#8c959f" font-family="Helvetica, Arial, sans-serif">reed switch (glass, under the board)</text>
 <text x="242" y="58" text-anchor="middle" font-size="14" font-weight="bold" fill="#1f2328" font-family="Helvetica, Arial, sans-serif">Wyze v1 contact, pad side</text>
 <text x="435" y="92" text-anchor="end" font-size="11" fill="#adbac7" font-family="Helvetica, Arial, sans-serif">antenna side →</text>
-<circle cx="108" cy="136" r="11" fill="#d4b483" stroke="#57606a" stroke-width="2"/>
-<text x="108" y="119" text-anchor="middle" font-size="13" font-weight="bold" fill="#768390" font-family="Helvetica, Arial, sans-serif">W</text>
 <circle cx="176" cy="112" r="11" fill="#d4b483" stroke="#8e1b1b" stroke-width="4"/>
 <text x="176" y="95" text-anchor="middle" font-size="13" font-weight="bold" fill="#ffffff" font-family="Helvetica, Arial, sans-serif">V− (GND)</text>
 <circle cx="91" cy="254" r="11" fill="#d4b483" stroke="#2e9e3e" stroke-width="4"/>
