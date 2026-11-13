@@ -18,9 +18,10 @@ import json
 import pathlib
 import shutil
 import sys
+import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-GUIDE = 'https://github.com/HclX/wyzesense_relay'
+GUIDE = 'https://github.com/HclX/wyzesenserelay'
 MANIFEST_FORMAT = 'openwyzesense-release'  # the same format wyzesense2mqtt-rs reads from openwyzesense's releases
 RELAY_TAG = b'OWS-RELAY-VERSION:'  # the relay's own version in its image (idf/main/web.c, esp8266 main.cpp)
 STOCK_MARKER = b'START111'  # the stock Wyze gateway firmware's start-up line: only in a build that embeds a dump
@@ -29,6 +30,10 @@ ESP32 = [  # (build directory under --esp32, chip name, label)
     ('build-esp32', 'esp32', 'classic ESP32 (LOLIN32)'),
 ]
 UDEV = [('72-esp-usb-serial.rules', 'ESP32 / ESP8266 USB serial')]
+SCRIPTS = [
+    ('flash.sh', 'Linux / macOS', 'first-flash helper (auto-detects chip & image)', '`./flash.sh [PORT]`'),
+    ('flash.bat', 'Windows', 'first-flash helper (auto-detects chip & image)', '`flash.bat [COM_PORT]`'),
+]
 
 
 def bundle(version, esp32, esp8266, out):
@@ -98,6 +103,18 @@ def bundle(version, esp32, esp8266, out):
             'udev',
             versioned=False,
         )
+    for script, device, what, how in SCRIPTS:
+        add(
+            ROOT / 'tools' / script,
+            script,
+            device,
+            what,
+            how,
+            'flash-script',
+            versioned=False,
+        )
+        if script.endswith('.sh') and (out / script).is_file():
+            (out / script).chmod(0o755)
     if errors:
         raise SystemExit('release bundle not made:\n  ' + '\n  '.join(errors))
 
@@ -109,11 +126,11 @@ def bundle(version, esp32, esp8266, out):
         f'# WyzeSense relay {version}',
         '',
         'The ESP32 / ESP32-S3 / ESP8266 IP relay for a Wyze v1 contact board as a Wi-Fi gateway. Step by step:',
-        f'the user guide, {GUIDE}/tree/{version}/docs/guide. Check the files with `sha256sum -c SHA256SUMS`;',
+        f'the user guide, {GUIDE}/tree/{version}#user-guide. Check the files with `sha256sum -c SHA256SUMS`;',
         "manifest.json lists the same with each file's product, for programs (wyzesense2mqtt-rs).",
         '',
-        'The relay images carry the OpenWyzeSense gateway image for the contact board. They carry no stock Wyze',
-        'firmware: a relay that is to run the stock gateway needs a local build from your own dongle dump.',
+        'The relay images carry the OpenWyzeSense gateway image for the contact board. To run Stock Wyze v1.8',
+        'instead, upload your dongle dump in the Web UI under Update -> Stock gateway firmware.',
         '',
         '| File | Device | What | How to install |',
         '|---|---|---|---|',
@@ -121,6 +138,11 @@ def bundle(version, esp32, esp8266, out):
         '',
     ]
     (out / 'README.md').write_text('\n'.join(lines))
+    zip_name = f'wyzesenserelay-{version}.zip'
+    bundle_files = [n for n, *_ in rows] + ['SHA256SUMS', 'manifest.json', 'README.md']
+    with zipfile.ZipFile(out / zip_name, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+        for name in bundle_files:
+            zf.write(out / name, arcname=name)
     return [r[0] for r in rows]
 
 
