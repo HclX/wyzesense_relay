@@ -3,6 +3,7 @@ import hashlib
 import json
 import pathlib
 import sys
+import zipfile
 
 import pytest
 
@@ -26,7 +27,9 @@ def test_bundle_has_the_products_w2m_updates_relays_from(tmp_path):
     esp, e8266 = fake_build(tmp_path, 'v0.3.0')
     out = tmp_path / 'dist'
     names = release_bundle.bundle('v0.3.0', esp, e8266, out)
-    assert len(names) == 2 * len(release_bundle.ESP32) + 1 + len(release_bundle.UDEV)
+    assert len(names) == 2 * len(release_bundle.ESP32) + 1 + len(release_bundle.UDEV) + len(release_bundle.SCRIPTS)
+    with zipfile.ZipFile(out / 'wyzesenserelay-v0.3.0.zip') as zf:
+        assert set(names + ['SHA256SUMS', 'manifest.json', 'README.md']) == set(zf.namelist())
     manifest = json.loads((out / 'manifest.json').read_text())
     assert manifest['format'] == 'openwyzesense-release' and manifest['version'] == 'v0.3.0'
     products = {f['product'] for f in manifest['files']}
