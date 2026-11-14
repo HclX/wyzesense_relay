@@ -3,6 +3,7 @@ import hashlib
 import json
 import pathlib
 import sys
+import zipfile
 
 import pytest
 
@@ -37,6 +38,10 @@ def test_bundle_has_the_products_w2m_updates_relays_from(tmp_path):
     assert {f['file']: f['sha256'] for f in manifest['files']} == sums
     for n, h in sums.items():
         assert hashlib.sha256((out / n).read_bytes()).hexdigest() == h
+    zpath = out / 'wyzesenserelay-v0.3.0.zip'
+    assert zpath.is_file()
+    with zipfile.ZipFile(zpath) as zf:
+        assert set(zf.namelist()) == set(names) | {'SHA256SUMS', 'manifest.json', 'README.md'}
 
 
 def test_a_build_of_another_version_is_refused(tmp_path):

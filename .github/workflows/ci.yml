@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-24.04
@@ -121,9 +125,13 @@ jobs:
           name: esp8266-relay
           path: in/esp8266
 
+      - name: The tag vX.Y.Z matches pyproject.toml
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: uv run tools/version.py --check-tag "$GITHUB_REF_NAME"
+
       - name: Assemble the bundle
         run: |
-          uv run tools/release_bundle.py --version "$(git describe --always --dirty --tags)" \
+          uv run tools/release_bundle.py --version "$(uv run tools/version.py)" \
             --esp32 in/esp32 --esp8266 in/esp8266/firmware.bin --out dist
           ls -l dist
 

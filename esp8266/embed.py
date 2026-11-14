@@ -43,7 +43,7 @@ write(
 )
 
 version = subprocess.run(
-    ['git', 'describe', '--always', '--dirty', '--tags'], cwd=root, capture_output=True, text=True
+    [sys.executable, str(root / 'tools' / 'version.py')], cwd=root, capture_output=True, text=True
 ).stdout.strip()
 write('relay_version.h', f'#pragma once\n#define OWS_RELAY_VERSION "{version or "unknown"}"\n')
 env.Append(CPPPATH=[str(out)])  # noqa: F821

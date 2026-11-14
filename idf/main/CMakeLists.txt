@@ -14,7 +14,8 @@ add_custom_target(gateway_image
 target_add_binary_data(${COMPONENT_LIB} "${gw_bin}" BINARY DEPENDS gateway_image)
 
 # the relay's version for its status page and for the web page to find in an image ("OWS-RELAY-VERSION:")
-execute_process(COMMAND git describe --always --dirty --tags WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}"
+execute_process(COMMAND "${PYTHON}" "${CMAKE_CURRENT_LIST_DIR}/../../tools/version.py"
+                WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../.."
                 OUTPUT_VARIABLE relay_version OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
 if(relay_version STREQUAL "")
     set(relay_version unknown)

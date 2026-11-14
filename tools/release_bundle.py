@@ -18,9 +18,10 @@ import json
 import pathlib
 import shutil
 import sys
+import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-GUIDE = 'https://github.com/HclX/wyzesense_relay'
+GUIDE = 'https://github.com/HclX/wyzesenserelay'
 MANIFEST_FORMAT = 'openwyzesense-release'  # the same format wyzesense2mqtt-rs reads from openwyzesense's releases
 RELAY_TAG = b'OWS-RELAY-VERSION:'  # the relay's own version in its image (idf/main/web.c, esp8266 main.cpp)
 STOCK_MARKER = b'START111'  # the stock Wyze gateway firmware's start-up line: only in a build that embeds a dump
@@ -121,6 +122,10 @@ def bundle(version, esp32, esp8266, out):
         '',
     ]
     (out / 'README.md').write_text('\n'.join(lines))
+    zip_path = out / f'wyzesenserelay-{version}.zip'
+    with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+        for name in [*[r[0] for r in rows], 'SHA256SUMS', 'manifest.json', 'README.md']:
+            zf.write(out / name, arcname=name)
     return [r[0] for r in rows]
 
 
